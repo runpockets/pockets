@@ -65,6 +65,7 @@ pockets url                 # Print authenticated sign-in URL for another browse
 pockets list                # List registered Pockets
 pockets new <name>          # Create and register a new Pocket starter folder
 pockets link [path]         # Link an existing Pocket folder (defaults to .)
+pockets add <owner/repo>    # Clone and register a Pocket from GitHub
 pockets start <id>          # Start an installed Pocket
 pockets stop <id>           # Stop a running Pocket (preserves data)
 pockets service install     # Install & enable launchd (macOS) or systemd --user (Linux)

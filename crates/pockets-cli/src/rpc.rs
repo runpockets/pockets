@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use pockets_core::{
-    creation, development_commands, fs_browser, project_lifecycle, project_preview,
+    creation, development_commands, fs_browser, github_install, project_lifecycle, project_preview,
     resource_monitor, revision_commands, runtime_settings, AppContext,
 };
 
@@ -125,6 +125,14 @@ struct ChangeRuntimeSettingsArgs {
     id: String,
     environment: runtime_settings::Environment,
     change: runtime_settings::Change,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddGitHubArgs {
+    source: String,
+    #[serde(default)]
+    dest_parent: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -353,6 +361,18 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
         }
 
         "resource_snapshot" => to_json(resource_monitor::resource_snapshot(ctx).await?),
+
+        "add_github_pocket" => {
+            let args: AddGitHubArgs = parse_args(body)?;
+            to_json(
+                github_install::add_github_pocket(
+                    ctx,
+                    &args.source,
+                    args.dest_parent.map(PathBuf::from),
+                )
+                .await?,
+            )
+        }
 
         "browse_directory" => {
             let args: BrowseDirectoryArgs = parse_args(body)?;

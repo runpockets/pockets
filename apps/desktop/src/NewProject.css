@@ -64,3 +64,14 @@
   border-top: 1px solid var(--border);
   padding-top: var(--space-16);
 }
+
+.new-project-github {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.new-project-github input {
+  flex: 1;
+  min-width: 0;
+}

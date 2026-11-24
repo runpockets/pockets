@@ -7,8 +7,8 @@ mod service;
 use std::path::PathBuf;
 
 use pockets_core::{
-    creation, development_commands, fs_browser, project_lifecycle, runtime::RuntimeState,
-    AppContext,
+    creation, development_commands, fs_browser, github_install, project_lifecycle,
+    runtime::RuntimeState, AppContext,
 };
 
 struct Cli {
@@ -41,6 +41,9 @@ enum Commands {
     Link {
         path: PathBuf,
         id: Option<String>,
+    },
+    Add {
+        source: String,
     },
     Start {
         id: String,
@@ -78,6 +81,7 @@ Commands:
   new <NAME> [--parent DIR] [--folder SLUG] [--brief TEXT]
                                           Create a new Pocket starter folder and register it
   link [PATH] [--id ID]                   Link an existing Pocket folder (default: .)
+  add <OWNER/REPO | GITHUB_URL>           Clone & register a Pocket from GitHub
   start <ID>                              Start an installed Pocket
   stop <ID>                               Stop a running Pocket
   status <ID>                             Show status for an installed Pocket
@@ -230,6 +234,12 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
             }
             Commands::Link { path, id }
         }
+        "add" => Commands::Add {
+            source: args
+                .first()
+                .ok_or("Usage: pockets add <OWNER/REPO | https://github.com/OWNER/REPO>")?
+                .clone(),
+        },
         "start" => Commands::Start {
             id: args
                 .first()
@@ -346,6 +356,7 @@ async fn main() {
             brief,
         }) => run_new(ctx, name, parent, folder, brief).await,
         Some(Commands::Link { path, id }) => run_link(ctx, path, id).await,
+        Some(Commands::Add { source }) => run_add(ctx, source).await,
         Some(Commands::Start { id }) => run_start(ctx, id).await,
         Some(Commands::Stop { id }) => run_stop(ctx, id).await,
         Some(Commands::Status { id }) => run_status(ctx, id).await,
@@ -532,6 +543,15 @@ async fn run_link(ctx: AppContext, path: PathBuf, id: Option<String>) -> Result<
         project.manifest.metadata.name,
         project.id,
         canonical.display()
+    );
+    Ok(())
+}
+
+async fn run_add(ctx: AppContext, source: String) -> Result<(), String> {
+    let project = github_install::add_github_pocket(&ctx, &source, None).await?;
+    println!(
+        "Added Pocket '{}' (id: {}). Open Pockets to review, configure variables, and click Build & start.",
+        project.manifest.metadata.name, project.id
     );
     Ok(())
 }

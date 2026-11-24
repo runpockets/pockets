@@ -168,4 +168,22 @@ describe("New project", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
   });
+
+  it("adds a Pocket from a GitHub repository", async () => {
+    native.mockResolvedValueOnce(project);
+    const { onCreated } = renderForm();
+    fireEvent.change(screen.getByLabelText("GitHub repository"), {
+      target: { value: "runpockets/crypto-tracker" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add from GitHub" }));
+    });
+    expect(native).toHaveBeenCalledWith("add_github_pocket", {
+      source: "runpockets/crypto-tracker",
+    });
+    expect(onCreated).toHaveBeenCalledWith({
+      ...project,
+      developmentLinked: true,
+    });
+  });
 });

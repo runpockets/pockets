@@ -25,6 +25,7 @@ export default function NewProject({
   const [folder, setFolder] = useState("");
   const [customFolder, setCustomFolder] = useState(false);
   const [brief, setBrief] = useState("");
+  const [githubSource, setGithubSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const folderErrorId = useId();
@@ -50,6 +51,24 @@ export default function NewProject({
       // Registration still deserves a catalog refresh if the user navigated
       // away during the native picker; App decides whether to navigate.
       if (project !== null) onCreated({ ...project, developmentLinked: true });
+    } catch (failure) {
+      if (mounted.current) setError(String(failure));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function addFromGitHub() {
+    if (inFlight.current || githubSource.trim() === "") return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const project = await invoke<Project>("add_github_pocket", {
+        source: githubSource.trim(),
+      });
+      onCreated({ ...project, developmentLinked: true });
     } catch (failure) {
       if (mounted.current) setError(String(failure));
     } finally {
@@ -187,6 +206,26 @@ export default function NewProject({
             your coding tool. Creating it runs no code. You choose Start for
             preview and Build/Update for installation.
           </p>
+          <div className="new-project-existing">
+            <p className="hint">Add a Pocket from GitHub</p>
+            <div className="new-project-github">
+              <input
+                type="text"
+                value={githubSource}
+                disabled={busy}
+                aria-label="GitHub repository"
+                onChange={(event) => setGithubSource(event.target.value)}
+                placeholder="owner/repo or https://github.com/owner/repo"
+              />
+              <button
+                type="button"
+                disabled={busy || githubSource.trim() === ""}
+                onClick={() => void addFromGitHub()}
+              >
+                Add from GitHub
+              </button>
+            </div>
+          </div>
           <div className="new-project-existing">
             <p className="hint">Already have a Pocket source folder?</p>
             <button
