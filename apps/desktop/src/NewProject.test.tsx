@@ -11,12 +11,6 @@ import { invoke } from "./api";
 import NewProject from "./NewProject";
 
 vi.mock("./api", () => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    startDragging: async () => {},
-    toggleMaximize: async () => {},
-  }),
-}));
 const native = vi.mocked(invoke);
 const project = {
   id: "created-project",

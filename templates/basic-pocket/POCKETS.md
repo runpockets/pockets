@@ -21,13 +21,13 @@ separate project or edit Pockets' managed snapshots.
 - Keep `pocket.yaml`'s `metadata.id` stable. Update `Containerfile` when adding
   source/assets so the installed image includes everything the preview serves.
 - For read-only APIs, declare each exact lowercase hostname under `previewApis`
-  in `pocket.yaml` as an object with `host`, `name`, and `purpose`. Desktop asks
+  in `pocket.yaml` as an object with `host`, `name`, and `purpose`. Pockets asks
   the owner to approve new hosts. When `POCKETS_HTTPS_GATEWAY` is set, send GET
   or HEAD to `/fetch` on that URL with the full provider HTTPS URL in the `url`
   query parameter. The installed app uses the normal provider URL. Handle
   loading, stale data, and failures, and label samples.
 - Read app settings from environment variables. Ask the user to configure
-  their values in Desktop and start Preview there. Keep credentials out of
+  their values in Pockets and start Preview there. Keep credentials out of
   source, browser responses, and logs.
 - Source snapshots exclude secrets, Git metadata, local `data/`, caches and
   `node_modules`. Do not depend on excluded files in preview or installation.

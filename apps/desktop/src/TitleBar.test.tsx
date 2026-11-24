@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { TitleBar } from "./TitleBar";
 import titlebarCss from "./TitleBar.css?raw";
@@ -11,20 +11,6 @@ import titlebarCss from "./TitleBar.css?raw";
  * overlay the row (§1.5). The geometry itself is pinned as a CSS contract so
  * every column's bottom border keeps landing on the same 52px line.
  */
-
-// The mounted bar reaches the window API through useFullscreen /
-// useTitlebarDrag, and the asTauri() flag below is a bare object — the real
-// module throws the moment getCurrentWindow() reads its metadata. Stub the
-// surface the hooks touch: never full screen, listening succeeds, drags go
-// nowhere.
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    isFullscreen: async () => false,
-    listen: async () => () => {},
-    startDragging: async () => {},
-    toggleMaximize: async () => {},
-  }),
-}));
 
 /* The component reads `"__TAURI_INTERNALS__" in window` at render time,
  * exactly like App and PocketSidebar, so tests toggle the flag before

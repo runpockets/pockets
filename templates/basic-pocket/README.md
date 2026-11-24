@@ -5,10 +5,10 @@ server with an HTTP health check and a visit count persisted to `/data`, the
 Pocket storage volume. It shows the contract Pockets expects — replace
 `server.js` with your own app and keep the lifecycle bits.
 
-## Run in Pockets Desktop
+## Run in Pockets
 
-If this project was created in Desktop it is already registered. Otherwise,
-choose **Link project** and select this folder. Choose **Develop**, then
+If this project was created in Pockets it is already registered. Otherwise,
+choose **Link project** (or run `pockets link .` in this folder). Choose **Develop**, then
 **Start** in the preview pane with Podman operational and the Node preview
 image cached. Saved edits in your coding tool refresh automatically.
 
@@ -17,9 +17,9 @@ runtime requirements in `POCKETS.md` and the app brief in `POCKETS_BRIEF.md`.
 Edit the brief to describe the app you want, then ask your coding tool to build it.
 
 Preview runs dependency-free Node code. Declare HTTPS services in `previewApis`
-in `pocket.yaml` so Desktop can request approval while Preview runs. Configure
+in `pocket.yaml` so Pockets can request approval while Preview runs. Configure
 variables in **Runtime variables**. Stop discards preview data. After reviewing
-the result, choose **Sync source → Build/Update** to capture and install that version,
+the result, choose **Build & start** / **Update** to capture and install that version,
 then **Open** for the installed app. Installed-app Stop preserves its data.
 
 Pockets manages images, localhost ports and readiness. Source and build output

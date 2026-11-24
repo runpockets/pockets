@@ -65,7 +65,7 @@ enum ServiceAction {
 }
 
 const HELP_TEXT: &str = "\
-Pockets — Describe it. Own it. Share it.
+Pockets — Local-first home for personal self-hosted web apps.
 
 Usage:
   pockets [OPTIONS] [COMMAND]

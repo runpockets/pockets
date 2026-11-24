@@ -164,7 +164,7 @@ describe("ResourceMonitor rendering", () => {
 
     // Honest coverage note: the total is the managed containers only.
     expect(scopes[0].textContent).toMatch(/only the managed containers/);
-    expect(scopes[0].textContent).toMatch(/not the Desktop app/);
+    expect(scopes[0].textContent).toMatch(/not Pockets itself/);
     // The removed cross-scope overhead explanation stays gone.
     expect(screen.queryByText(/not additive/)).toBeNull();
     expect(screen.queryByText(/does not isolate/)).toBeNull();

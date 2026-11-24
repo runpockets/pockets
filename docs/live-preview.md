@@ -20,7 +20,7 @@ The initial profile needs a root `server.js`, a valid Pocket manifest and
 dependency-free Node runtime code. `devDependencies` may be declared but are
 not installed. The existing Podman VM must be operational and
 `docker.io/library/node:24-alpine` cached. Preview never pulls an image or
-installs packages. Preview runs on an internal network. Start from Desktop to
+installs packages. Preview runs on an internal network. Start from Pockets to
 load saved Preview variables and any approved API access. Variables stay
 available across live reload until Stop, which removes the engine secrets.
 See [runtime variables](creation.md#runtime-variables).
@@ -37,7 +37,7 @@ previewApis:
     purpose: Show live BTC prices.
 ```
 
-Click **Start** in Desktop. Preview starts with its saved approvals. If the
+Click **Start** in Pockets. Preview starts with its saved approvals. If the
 Pocket requests new hostnames at startup or during a live edit, Pockets opens,
 highlights, and focuses **Preview API access** in the centre pane. The new hosts
 stay blocked until you choose **Allow**. This saves approval for the linked
@@ -108,20 +108,17 @@ stale-while-revalidate startup across browsers, devices, and restarts.
 
 The opt-in `project_preview_live` test exercises the production watcher against
 a disposable project and existing Podman engine, including CSS refresh, code
-failure/recovery, stable URL/data, configuration recovery and Stop. Desktop
-tests cover project command routing and the development workspace. Actual
-embedded native-view acceptance remains pending; see the checklist for current
-verification results.
+failure/recovery, stable URL/data, configuration recovery and Stop. Frontend
+tests cover project command routing and the development workspace.
 
 ## Embedded preview
 
-The native child webview uses only the preview proxy’s loopback origin. It
-has no Pockets command permissions, and the host confines navigation and
-denies permission requests and downloads. The proxy injects a live client for
-stylesheet swaps and reloads. Open in browser uses the same preview URL.
-Closing or collapsing the pane hides the child webview while the watcher
-continues. **Stop** tears down the preview container, proxy, test volume, and
-engine copies of its variables.
+The preview renders inside a sandboxed `<iframe>` on the preview proxy’s
+separate loopback origin, keeping it cross-origin isolated from the Pockets
+control API and session cookie. The proxy injects a live client for stylesheet
+swaps and reloads. **Open in browser** uses the same preview URL. Collapsing
+the pane keeps the watcher running. **Stop** tears down the preview container,
+proxy, test volume, and engine copies of its variables.
 
 **Preview logs → Read logs** fetches recent output from the verified preview
 container on demand. Build output is available under **Technical details** in

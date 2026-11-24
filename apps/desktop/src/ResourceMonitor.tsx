@@ -294,7 +294,7 @@ export default function ResourceMonitor({
               cpuLabel="CPU"
               cpu={percentText(snapshot?.totals.cpuPercent ?? null)}
               memory={snapshot ? memoryText(snapshot.totals.memoryBytes) : null}
-              foot="Covers only the managed containers listed below — not the Desktop app itself, the Podman machine, or other workloads on this computer."
+              foot="Covers only the managed containers listed below — not Pockets itself, the Podman machine, or other workloads on this computer."
             />
           </div>
 

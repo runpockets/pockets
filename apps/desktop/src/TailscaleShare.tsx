@@ -147,8 +147,8 @@ export function TailscaleStatusPanel({
             <p className="tailscale-launcher-title">Pocket launcher</p>
             <code className="tailscale-panel-host">{portalUrl}</code>
             <p className="hint">
-              One bookmark for all your shared Pockets (active while Pockets
-              Desktop is open).
+              One bookmark for all your shared Pockets (active while the Pockets
+              daemon is running).
             </p>
             <div className="creation-tailscale-actions">
               <button

@@ -13,7 +13,7 @@ If Pockets already created or linked the project, work in that existing source
 folder. Read `AGENTS.md`, `POCKETS.md` and `POCKETS_BRIEF.md` if present. Preserve
 its manifest `metadata.id` and make edits in place.
 
-If creating from scratch outside Desktop, use the repository tools below.
+If creating from scratch outside Pockets, use the repository tools below.
 Locate the Pockets repository. Read `docs/pocket-spec.md` and the root `package.json`; do not invent commands. Run the following commands from that repository, using explicit paths for the new project:
 
 ```sh
@@ -21,7 +21,7 @@ npm run pocket -- create ./my-pocket
 npm run pocket -- validate ./my-pocket/pocket.yaml
 ```
 
-`create` writes a standalone starter. It does **not** install dependencies, execute the app, build images, or install anything in Desktop. Its destination must not exist, and its final directory name must be a lowercase alphanumeric slug with single hyphen separators, at most 63 characters. Choose a distinct ID; do not overwrite another application.
+`create` writes a standalone starter. It does **not** install dependencies, execute the app, build images, or install anything in Pockets. Its destination must not exist, and its final directory name must be a lowercase alphanumeric slug with single hyphen separators, at most 63 characters. Choose a distinct ID; do not overwrite another application.
 
 If dependencies are not installed, ask before running `npm ci`. The creation tools require the repository's npm dependencies; the generated starter's app and tests have no runtime dependencies.
 
@@ -37,11 +37,11 @@ If dependencies are not installed, ask before running `npm ci`. The creation too
    - Graceful shutdown, bounded request bodies, validated input, safe text rendering, and useful errors.
    - State-changing browser requests protected against cross-origin writes; do not use GET for mutations.
 4. Keep the manifest within the supported schema. Do not invent configuration, secret, permission, multiple-service, or host-mount fields. If the request requires unsupported features, explain that limitation before proceeding.
-5. The current Desktop preview profile requires a dependency-free root
+5. The current Pockets preview profile requires a dependency-free root
    `server.js`; declared development tools are not installed in preview.
    Framework build servers are pending. For reads from external APIs, declare
    each exact `host`, service `name`, and `purpose` under `previewApis` in
-   `pocket.yaml` so Desktop can prompt for approval. Use the preview HTTPS
+   `pocket.yaml` so Pockets can prompt for approval. Use the preview HTTPS
    gateway described in `POCKETS.md` when `POCKETS_HTTPS_GATEWAY` is set. Read
    credentials from runtime variables and give the user the variable names.
    Keep secret values out of source, prompts, and app output.
@@ -73,16 +73,16 @@ After code review and the required execution approval:
 
 Validation checks manifest structure only. It does not verify image provenance, image availability, actual image architecture, application behaviour, or safety.
 
-## Default handoff: linked development in Desktop
+## Default handoff: linked development in Pockets
 
-For normal use, hand the generated source project to Pockets Desktop:
+For normal use, hand the generated source project to Pockets:
 
-1. If Desktop created the project it is already linked. Otherwise choose
-   **Link project** and select the source folder; linking again reuses its Pocket.
+1. If Pockets created the project it is already linked. Otherwise choose
+   **Link project** (or run `pockets link .`) and select the source folder; linking again reuses its Pocket.
 2. Choose **Develop → Start** to execute the isolated Node preview. Saved edits
    refresh automatically while the coding tool is active.
    Podman must already be operational and the Node preview image cached.
-3. After review choose **Sync source**, then **Build and start** for initial
+3. After review choose **Build and start** for initial
    installation or **Update** for an installed Pocket. Build/Update is an
    explicit deployment decision; external edits alone do not install anything.
 4. Installed-app **Open** manages startup, ports and readiness. Its Stop retains
@@ -90,9 +90,9 @@ For normal use, hand the generated source project to Pockets Desktop:
 
 Do not end the ordinary user workflow with `npm start`, a manually chosen port, or a `podman run` command. Those are developer shortcuts, not the managed product experience.
 
-Desktop scaffolds the reviewed starter, while the coding conversation and
+Pockets scaffolds the reviewed starter, while the coding conversation and
 implementation remain in the external tool. Do not claim a model/harness
-connection was established. Desktop owns preview, capture, build and installation.
+connection was established. Pockets owns preview, capture, build and installation.
 
 Capture excludes local development data, hidden credential files and caches.
 Existing `data/` is left untouched, not migrated into the managed volume. Editing

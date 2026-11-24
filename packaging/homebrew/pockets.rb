@@ -2,7 +2,7 @@
 # Installs both `pockets` and `podman` automatically on macOS (and Linuxbrew)
 # with zero Apple Developer code-signing certificates or Gatekeeper prompts.
 class Pockets < Formula
-  desc "Describe it. Own it. Share it. Local-first self-hosted web apps"
+  desc "Local-first home for personal self-hosted web apps"
   homepage "https://github.com/runpockets/pockets"
   version "0.1.0"
   license "Apache-2.0"

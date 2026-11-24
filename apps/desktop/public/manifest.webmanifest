@@ -1,7 +1,7 @@
 {
   "name": "Pockets",
   "short_name": "Pockets",
-  "description": "Describe it. Own it. Share it. Local-first self-hosted web apps.",
+  "description": "Local-first home for personal self-hosted web apps.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f5f1",

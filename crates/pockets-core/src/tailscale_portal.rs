@@ -327,7 +327,7 @@ fn render_launcher_page(snapshot: &PortalSnapshot) -> String {
     }
 
     let body = if active_items.is_empty() && paused_items.is_empty() {
-        r#"<p class="empty">No Pockets are currently shared on Tailscale. Turn on Tailscale sharing on any installed Pocket in Pockets Desktop.</p>"#.to_owned()
+        r#"<p class="empty">No Pockets are currently shared on Tailscale. Turn on Tailscale sharing on any installed Pocket in Pockets.</p>"#.to_owned()
     } else {
         format!(r#"<ul class="grid">{active_items}{paused_items}</ul>"#)
     };

@@ -25,23 +25,6 @@ vi.mock("./api", () => ({
   authenticateSession: vi.fn(),
 }));
 
-// The v3 title-row surface (pockets-design-update-v3.md §2): the drag hook
-// and full-screen tracking never leave the frontend — never full screen by
-// default, listening succeeds, drags go nowhere (same convention as
-// PocketSidebar.test.tsx), plus a capture list so one test can deliver the
-// native full-screen events.
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    isFullscreen: async () => fixtures.fullscreen,
-    onResized: async (handler: () => void) => {
-      fixtures.resizeListeners.push(handler);
-      return () => {};
-    },
-    startDragging: async () => {},
-    toggleMaximize: async () => {},
-  }),
-}));
-
 // Values the mocked child components need at module-factory time (factories
 // are hoisted above the consts below).
 const fixtures = vi.hoisted(() => ({

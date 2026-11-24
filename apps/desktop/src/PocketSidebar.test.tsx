@@ -16,20 +16,6 @@ import sidebarCss from "./PocketSidebar.css?raw";
 // component tests).
 vi.mock("./api", () => ({ invoke: vi.fn() }));
 
-// The mounted TitleBar reaches the window API through useFullscreen /
-// useTitlebarDrag, and the asTauri() flag below is a bare object — the real
-// module throws the moment getCurrentWindow() reads its metadata. Stub the
-// surface the hooks touch: never full screen, listening succeeds, drags go
-// nowhere.
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    isFullscreen: async () => false,
-    listen: async () => () => {},
-    startDragging: async () => {},
-    toggleMaximize: async () => {},
-  }),
-}));
-
 const invokeMock = vi.mocked(invoke);
 
 type Project = PocketCatalog["projects"][number];

@@ -67,11 +67,11 @@ npm run pocket -- create ./my-pocket
 npm run pocket -- validate ./my-pocket/pocket.yaml
 ```
 
-Desktop bundles the same `templates/basic-pocket` text starter used by this
+Pockets bundles the same `templates/basic-pocket` text starter used by this
 CLI. It includes a manifest, container definition, health endpoint, persistent
 visit-count demonstration, tests, formatter scripts, coding-tool instructions
 and a brief. The CLI destination must be new; its final directory name becomes
-the Pocket manifest ID and its title-cased display name. Desktop permits a
+the Pocket manifest ID and its title-cased display name. The web UI permits a
 separate display name. Neither path installs dependencies or executes code.
 
 Review the generated code, then run its tests:
@@ -91,7 +91,7 @@ Ask a fresh coding-agent session:
 
 > Read `agent/skills/create-pocket/SKILL.md` in this repository. Create a Pocket that [describe one small application]. Work in a new directory, keep persistent data under `/data`, and do not build or run containers without approval.
 
-For a project already created in Desktop, open its source folder in the coding
+For a project already created in Pockets, open its source folder in the coding
 tool and ask it to work from `AGENTS.md` and the project brief. The repository
 skill is also available as a portable instruction file.
 
@@ -105,31 +105,8 @@ re-importing is not an update or data migration. Native installation IDs keep
 duplicate manifest names separate. Never alter the bundled Hello manifest to
 impersonate an installation.
 
-Dependency-aware profiles and the live portfolio example are tracked in
-[the checklist](../REFACTOR_TODO.md). Pockets uses
-an already operational Podman VM. See [managed creation](managed-creation.md)
-for Build and Update behavior.
-
-## Existing Pockets and older workspaces
-
 Every saved Pocket opens in the development workspace. Choose **Export saved
 source…** and pick a parent directory to link a new copy of its verified
 working snapshot. The new subfolder is named after the Pocket’s manifest ID.
-Choose **Link development folder** if you already have the source. Both paths
+Choose **Link development folder** (or run `pockets link .`) if you already have the source. Both paths
 keep the Pocket’s identity, revision history, installed image and data volume.
-
-Built-in chat, generation and provider settings have been retired. The upgrade
-keeps prior AI files and credentials on disk. To recover files that were
-generated but never saved to a Pocket, look under
-`~/Library/Application Support/dev.pockets.desktop/ai/sessions/` for the
-session’s `workspace` folder. Copy that workspace to a normal folder and
-review its contents before linking it. Older conversations are local records
-and the new workspace displays source revision history.
-
-## First fresh-agent trial
-
-[`examples/local-dice`](../examples/local-dice) was generated with the create command by a fresh agent session given this skill and a small product request: one Roll button, last roll, and a persistent roll count. It adds no runtime dependencies or AI access.
-
-Manifest validation and focused tests passed. Source review found request-abort and write-origin handling issues; these were corrected with regression coverage before building the image. Treat this as a reviewed agent-assisted result, not evidence that arbitrary generated apps are safe without review.
-
-The ARM64 image built and ran as the non-root `node` user with a dedicated named volume and loopback-only dynamic port. Browser interaction and data retention across container recreation were verified. This earlier trial used an explicitly approved developer preview, not the later Desktop handoff. See [verification details](verification.md) for exact results and retained preview resources. The preview was stopped; Hello Pocket was not modified or restarted.

@@ -49,10 +49,10 @@ use crate::{creation, local_sites, project_lifecycle, runtime, source};
 /// module-private on purpose; the live test only ever verifies it.
 const OWNERSHIP_LABEL: &str = "dev.pockets.managed";
 
-/// The repository's own Personal Notes example, resolved from the crate
-/// manifest directory (no dependence on the test working directory).
+/// Test fixture for the live managed-project lifecycle tests, resolved from the
+/// crate manifest directory (no dependence on the test working directory).
 fn example_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/personal-notes")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/personal-notes")
 }
 
 /// Bounded loopback-only HTTP client: no proxy, no redirects, 5-second

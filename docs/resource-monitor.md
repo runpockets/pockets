@@ -1,7 +1,7 @@
 # Resource Monitor
 
-Resource Monitor is a first-party view included in Desktop, not a container
-with elevated permissions. Choose **Open Resource Monitor** to see combined
+Resource Monitor is a first-party view included in Pockets, not a container
+with elevated permissions. Open **Resource monitor** to see combined
 and per-pocket CPU/memory and running/stopped status.
 It includes Hello Pocket and installed created Pockets;
 unbuilt drafts and unrelated containers are not pocket totals.
@@ -17,7 +17,7 @@ unbuilt drafts and unrelated containers are not pocket totals.
   labeled MiB and GiB.
 
 Totals cover only the listed managed pocket containers. They do not include
-the Desktop application's own process, the VM's Linux OS, Podman, or hypervisor
+the Pockets daemon's own process, the VM's Linux OS, Podman, or hypervisor
 overhead. The monitor does not sample or display whole-computer or VM usage.
 
 Podman's VM memory capacity is a separate concept: the local machine was
@@ -49,7 +49,7 @@ other-pocket access.
 
 ## Manual acceptance
 
-1. Open Desktop with Podman operational and open Resource Monitor. Check that
+1. Open Pockets with Podman operational and open Resource monitor. Check that
    Hello Pocket and installed apps appear, but drafts and unrelated containers
    do not.
 2. Compare running rows with `podman stats --no-stream`; expect normal sampling

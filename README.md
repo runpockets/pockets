@@ -1,10 +1,10 @@
 # Pockets
 
-**Describe it. Own it. Share it.**
+**Run personal self-hosted web apps locally — without managing containers.**
 
-Pockets is an open-source, local-first platform for creating, running, and owning small self-hosted web apps on macOS, Linux, and homelabs. Use your favorite AI coding tool to build a Pocket, watch it live-reload in an isolated preview, then install it as a persistent local app — optionally reachable from your phone over private Tailscale Serve.
+Pockets is an open-source, local-first home for small self-hosted web apps on macOS, Linux, and homelabs. Build a Pocket in your preferred editor or coding tool, watch it live-reload in an isolated preview, and install it locally with persistent storage, native secrets, backups, version history, and optional private Tailscale access from your phone.
 
-Installed Pockets are ordinary containerized web apps with persistent volumes. AI helps create them, but **installed Pockets never depend on AI to run.**
+Installed Pockets are ordinary containerized web apps with their own data volumes — self-contained, local, and completely yours.
 
 ---
 
@@ -70,14 +70,6 @@ pockets stop <id>           # Stop a running Pocket (preserves data)
 pockets service install     # Install & enable launchd (macOS) or systemd --user (Linux)
 pockets service uninstall   # Stop & remove the background service
 ```
-
----
-
-## Call for Community Pockets
-
-We're starting v0.1 lean and inviting early builders to create and share Pockets (personal trackers, local dashboards, utilities, bookmarks, homelab tools, crypto/finance watchlists) ahead of our **HACS-style community Pockets catalog in v0.2**.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), the starter template in [templates/basic-pocket](templates/basic-pocket), and [docs/pocket-spec.md](docs/pocket-spec.md) to build your first Pocket in minutes!
 
 ---
 
