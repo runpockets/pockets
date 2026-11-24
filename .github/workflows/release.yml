@@ -14,52 +14,58 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
+          - name: macos
+            os: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
             archive: tar.gz
-          - os: macos-latest
-            target: x86_64-apple-darwin
+          - name: linux-x64
+            os: ubuntu-latest
+            targets: x86_64-unknown-linux-gnu
             archive: tar.gz
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            targets: aarch64-unknown-linux-gnu
             archive: tar.gz
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            archive: tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+          - name: windows-x64
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
             archive: zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
       - run: npm ci
       - run: npm run build:web
-      - name: Build pockets binary
-        run: cargo build --release --target ${{ matrix.target }} -p pockets-cli
-      - name: Package Unix archive
+      - name: Build and package Unix archives
         if: matrix.archive == 'tar.gz'
         shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
         run: |
           mkdir -p release
-          tar -czf "release/pockets-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" pockets
-      - name: Package Windows archive
+          for target in $(echo "${{ matrix.targets }}" | tr ',' ' '); do
+            cargo build --release --target "$target" -p pockets-cli
+            tar -czf "release/pockets-${{ github.ref_name }}-${target}.tar.gz" \
+              -C "target/${target}/release" pockets
+          done
+      - name: Build and package Windows archive
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
+          $target = "${{ matrix.targets }}"
+          cargo build --release --target $target -p pockets-cli
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Compress-Archive -Path "target/${{ matrix.target }}/release/pockets.exe" `
-            -DestinationPath "release/pockets-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/$target/release/pockets.exe" `
+            -DestinationPath "release/pockets-${{ github.ref_name }}-$target.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: pockets-${{ matrix.target }}
+          name: pockets-${{ matrix.name }}
           path: release/*
 
   publish:
