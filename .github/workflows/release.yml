@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - name: macos
-            os: macos-15
+            os: macos-15-intel
             targets: aarch64-apple-darwin,x86_64-apple-darwin
             archive: tar.gz
           - name: linux-x64
