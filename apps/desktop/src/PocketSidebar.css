@@ -1,0 +1,388 @@
+/* Styles for PocketSidebar: the content of the 248px pockets column
+   (pockets-design-update-v3.md §3 "Sidebar column"). The 248px grid track,
+   the `--chrome` scrolling column and its right border are the `.sidebar`
+   rules in styles.css; this file styles what lives inside: the shared
+   `TitleBar` row (TitleBar.css owns the 52px geometry — only the `--chrome`
+   override lives here), the section rows that replaced the AppNav rail, the
+   static list label, the two-line list items and the footer's host row plus
+   honest meters. The column itself carries no padding or gap: the title row
+   is the column's top edge and the horizontal inset belongs to the body and
+   footer, so every column's header border lands on the same y (§1).
+   Selectors are namespaced `pocket-sidebar-*` so they never collide with
+   the shell rules in styles.css. Flat by contract: square corners (radius 0
+   everywhere outside the conversation, v2 §4), no shadows, no gradients;
+   every color resolves through a token in tokens.css. The 13px monospace
+   stack is set on the component itself so the sidebar reads correctly
+   wherever it is mounted. */
+
+.pocket-sidebar {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--chrome);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--text);
+}
+
+/* TitleBar's default background is `--bg` — the content columns'. This
+   column is `--chrome` and the row must read as part of it (§1.4: "the
+   column backgrounds stay the same"). Two classes outrank TitleBar's one. */
+.pocket-sidebar .titlebar {
+  background: var(--chrome);
+}
+
+/* Content buttons carry no chrome of their own unless a rule below adds
+   one; the section rows and the list rows are deliberately borderless,
+   flat, full-width surfaces. Scoped to the body so the `TitleBar`'s
+   IconButtons keep the shared quiet title-bar treatment (§7) untouched.
+   (The v2 global 2px `--accent` focus ring in styles.css applies here
+   unchanged.) */
+.pocket-sidebar-body button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Below the title row: the section rows, the divider, the list label and
+   the list. The column's horizontal inset lives here now — the flush title
+   row replaced the container padding. The body always shows: this component
+   never collapses itself — the title row's toggle hides the column outright
+   — so there is no collapse handling here. */
+.pocket-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-8) var(--space-10) 0;
+}
+
+/* Section rows (v3 §3.1, replacing the AppNav rail): icon, label and count
+   on one line, with the same height, padding, hover and selected treatment
+   as a pocket row — a page row and a pocket row read as the same row type.
+   `aria-current="page"` is the marking and the background its only visual
+   signal, exactly like list selection. */
+/* Two classes so the row's own padding outranks the button reset above
+   (one class + one element). */
+.pocket-sidebar-body .pocket-sidebar-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 34px;
+  padding: var(--space-6) var(--space-10);
+}
+
+/* The icon keeps its intrinsic box: as a flex child the SVG could be
+   squeezed narrower than its viewBox when the label is long, squashing the
+   glyph. `flex: none` takes it out of the shrink equation entirely. */
+.pocket-sidebar-section svg {
+  flex: none;
+}
+
+.pocket-sidebar-section:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--selected) 50%, var(--chrome));
+}
+
+.pocket-sidebar-section[aria-current="page"] {
+  background: var(--selected);
+}
+
+.pocket-sidebar-section[aria-current="page"]:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+.pocket-sidebar-section-label {
+  min-width: 0;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pocket-sidebar-section[aria-current="page"] .pocket-sidebar-section-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* The count is a plain tally of the catalog phases, pinned right in
+   `--text-dim`; zero is an honest count and renders like any other. */
+.pocket-sidebar-section-count {
+  margin-left: auto;
+  padding-left: var(--space-8);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* One 1px divider under the section rows (§3.1), 8px clear of each side. */
+.pocket-sidebar-divider {
+  flex: none;
+  height: 1px;
+  margin: var(--space-8) 0;
+  background: var(--border);
+}
+
+/* The list label: the static word "Pockets", shown exactly as given (the
+   routed page's own words moved to the main column header, v3 §5; the v1
+   uppercase label is gone; nothing transforms the text here). */
+.pocket-sidebar-title {
+  margin: 0;
+  padding: var(--space-4) var(--space-10) var(--space-6);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  text-transform: none;
+}
+
+/* The list is the only scrolling part of the sidebar. */
+.pocket-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Row: name over a pip + word status line, one 44px-minimum button per
+   pocket, 1px between the lines (§5). Selection is a background highlight
+   only — no marker glyph, no left stripe; `aria-current` stays the
+   screen-reader signal. */
+/* Two classes so the row's own padding outranks the button reset above. */
+.pocket-sidebar-body .pocket-sidebar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-8) var(--space-10);
+}
+
+.pocket-sidebar-item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--selected) 50%, var(--chrome));
+}
+
+.pocket-sidebar-item[aria-current="true"] {
+  background: var(--selected);
+}
+
+.pocket-sidebar-item[aria-current="true"]:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+.pocket-sidebar-name {
+  min-width: 0;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pocket-sidebar-item[aria-current="true"] .pocket-sidebar-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Line 2: 12px `--text-dim` — the shared StatusPip (styles.css) plus any
+   honest detail the status record carried, ellipsised when long. */
+.pocket-sidebar-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.pocket-sidebar-detail {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Lineage drafts render as indented rows inside their installed parent's
+   group `<li>` (see projectLineage.ts). The wrapper carries no chrome of
+   its own; the nested list exists only to indent the recorded children —
+   no connector glyph, no status word, nothing that claims a relationship
+   native did not persist. The indent uses the existing spacing scale. */
+.pocket-sidebar-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pocket-sidebar-body .pocket-sidebar-children .pocket-sidebar-item {
+  padding-left: var(--space-24);
+}
+
+/* A parent row with folded drafts: the row button keeps its full width and
+   the chevron sits over its right end, clear of the text. */
+.pocket-sidebar-row {
+  position: relative;
+}
+
+.pocket-sidebar-body .pocket-sidebar-row > .pocket-sidebar-item {
+  padding-right: 40px;
+}
+
+.pocket-sidebar-body .pocket-sidebar-disclosure {
+  position: absolute;
+  top: 50%;
+  right: var(--space-6);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-dim);
+}
+
+.pocket-sidebar-body .pocket-sidebar-disclosure:hover {
+  background: var(--selected);
+  color: var(--text);
+}
+
+/* Points right while folded, down while the drafts show. */
+.pocket-sidebar-disclosure svg {
+  transform: rotate(-90deg);
+}
+
+.pocket-sidebar-disclosure[aria-expanded="true"] svg {
+  transform: none;
+}
+
+/* List-level notes (empty, loading, load failure): one dim or warn line,
+   never a card. */
+.pocket-sidebar-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-10);
+  color: var(--text-dim);
+}
+
+.pocket-sidebar-tone-warn {
+  color: var(--warn);
+}
+
+/* Footer pinned to the bottom of the column by margin-top: auto. It always
+   renders now — the host row above the meters is App-supplied text, not a
+   native sample (§3.5) — and its bottom inset replaces the container
+   padding the flush title row removed. */
+.pocket-sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  border-top: 1px solid var(--border);
+  padding: var(--space-12) var(--space-10) var(--space-10);
+  font-size: 12px;
+}
+
+/* Host row (§3.5): the host name left in `--text-dim`, the trustworthy
+   running count right as a pip + word; with no count known, the host
+   stands alone. Uses the same 10px inner inset as list rows so all sidebar
+   labels align on one vertical axis. */
+.pocket-sidebar-host {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  min-width: 0;
+  padding: 0 var(--space-10);
+  color: var(--text-dim);
+}
+
+.pocket-sidebar-host-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Only two meters ever exist and only with real `resource_snapshot`
+   numbers: CPU (row + 4px bar) and absolute Memory (row only). Framed as one
+   cohesive inset block so the CPU track reads as part of the meter rather
+   than a stray divider. */
+.pocket-sidebar-meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.pocket-sidebar-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pocket-sidebar-meter-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.pocket-sidebar-meter-label {
+  color: var(--text-dim);
+}
+
+.pocket-sidebar-meter-value {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pocket-sidebar-meter-bar {
+  height: 4px;
+  background: var(--selected);
+}
+
+.pocket-sidebar-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--text-dim);
+}
+
+.pocket-sidebar-theme {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-6) var(--space-10);
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.pocket-sidebar-theme:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--selected) 50%, var(--chrome));
+  color: var(--text);
+}
+
+.pocket-sidebar-theme svg {
+  flex: none;
+}
+
+.pocket-sidebar-theme-value {
+  margin-left: auto;
+  color: var(--text-2);
+}

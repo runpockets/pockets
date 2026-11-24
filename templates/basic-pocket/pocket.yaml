@@ -1,0 +1,16 @@
+apiVersion: pockets.dev/v1alpha1
+kind: Pocket
+metadata:
+  id: __POCKET_ID__
+  name: __POCKET_NAME__
+  version: "0.1.0"
+  description: A small persistent web app you control.
+runtime:
+  image: localhost/pockets-__POCKET_ID__:0.1.0
+  architectures: [__POCKET_ARCH__]
+web:
+  port: 8080
+  healthcheck: /health
+storage:
+  name: data
+  path: /data

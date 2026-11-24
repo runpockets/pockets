@@ -1,0 +1,20 @@
+{
+  "name": "pockets-personal-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Single shared plain-text note editor: dependency-free Node server with explicit Save, /health, and note.txt persistence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,938 @@
+/* Styles for CreationPanel. New selectors are namespaced `creation-*` and
+   extend the shared primitives in styles.css (.card, .card-title, .badge-like
+   pills, buttons) without redefining them. Every color resolves through the
+   semantic tokens in tokens.css. Flat by contract: no radius, shadows or
+   gradients, monospace inherited from the base, sizes inherit the base 13px
+   except the 15px card title. */
+
+.creation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* The status region only takes vertical space while it holds a message. */
+.creation-status:not(:empty) {
+  margin-top: 0.8rem;
+}
+
+.creation-status > * + * {
+  margin-top: 0.6rem;
+}
+
+.creation-empty {
+  margin-top: 1.1rem;
+}
+
+/* The `$ pockets ls` prompt line above the page title. */
+.creation-prompt {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* Overrides the dim uppercase .card-title look: the catalog title reads as
+   the page heading, so it rides the text color like a pocket name. */
+.creation-title {
+  margin: 0;
+  font-size: var(--font-size-card-title);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* The subtitle under the page title: the honest counts line. Reads as dim
+   metadata under the 700-weight title above it. */
+.creation-subtitle {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+}
+
+/* The page header: the title block left, the primary New pocket button
+   right; the wrap only engages when the window narrows enough to push the
+   button onto its own line. `flex-start` keeps the button aligned with the
+   title's top rather than centering it against a two-line heading block. */
+.creation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Refresh, Import pocket and the primary New pocket on one line, all the
+   same height so the row reads as one toolbar. */
+.creation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex: none;
+}
+
+.creation-header-actions > button {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+}
+
+/* The header's primary action. Inline-flex keeps the "+" icon a real flex
+   item centered against the label instead of an inline SVG sitting on the
+   text baseline, and the gap gives "+ New pocket" room; `flex: none` stops
+   the button from ever being squeezed by a long title block. */
+.creation-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-weight: 600;
+}
+
+/* The page-level build note under the header: one dim line. */
+.creation-page-note {
+  margin: var(--space-12) 0 0;
+}
+
+.creation-search {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+  height: 34px;
+  padding: 0 var(--space-10);
+}
+
+.creation-filter-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-top: 1.1rem;
+}
+
+/* Flat catalog grid: one of these per phase section, cards flowing in the
+   catalog's own order, the card's own pip carrying the state.
+   The 300px floor is the handoff's own px value (a rem would rescale under
+   the 13px base and shrink below it); min(100%, …) keeps one column usable
+   on narrower pages. */
+.creation-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  gap: 1rem;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.creation-grid > li {
+  display: flex;
+}
+
+/* Reads as a bordered block on the flat page surface (the panel root's own
+   .card skin is dropped in page context in styles.css). The `min-width: 0`
+   is load-bearing, not tidiness: as the cell's flex item the card would
+   otherwise take the default `auto` minimum, and a `white-space: pre`
+   Containerfile inside the optional Technical details block has a
+   min-content width equal to its longest line — which pushed the expanded
+   card past its grid track and painted it over the neighbouring card. With
+   the floor off, the card stays in its cell and the pre's own
+   `overflow: auto` does what it is there for. The column layout pairs with
+   the action row's `margin-top: auto`: the row sinks to the card's bottom,
+   so rows line up across the equal-height grid cells no matter how much
+   copy a card carries above it. */
+.creation-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1rem 1.15rem;
+}
+
+/* Lineage caption under a draft card's title: one muted line stating the
+   parent manifest name the panel resolved from the record's persisted
+   `editedFrom` (never an id, never a guess). It shares the description's
+   top offset and the dim metadata color — a fact about the card, not a
+   second status. */
+.creation-edited-from {
+  margin: 0.25rem 0 0;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* The card's last real UI capture, above the name row. `width: 100%` with
+   `contain` is deliberate: native captures are a fixed 1280×720 desktop
+   viewport now, but an older stored thumb may carry another size (the
+   pane's width, the spike's smaller transient), and the card must show the
+   captured UI whole
+   in the grid column — never cropped (cropping would hide evidence of
+   what the Pocket looked like) and never at an intrinsic size that could
+   re-introduce the min-content overflow this file already fixes at two
+   other levels. The caption is the honesty line: it names when the picture
+   is from, in the same 11px metadata treatment the shell uses elsewhere. */
+.creation-thumb {
+  margin: 0 0 0.75rem;
+}
+
+.creation-thumb-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* The whole capture is the enlarge hit target: a real <button> wrapper,
+   reset to invisibility so the image inside keeps its exact card geometry
+   (padding: 0 keeps the box flush) and the global :focus-visible ring
+   outlines the picture itself. */
+button.creation-thumb-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.creation-thumb-caption {
+  margin-top: 0.3rem;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+/* Always-last "+ new pocket" cell (handoff "Pocket card"): dashed
+   --border-strong, big accent `+`, title and the fixed prototype copy. It
+   is a real <button> filling its grid cell — the 44px floor is the
+   handoff's list-row hit target, and the global :focus-visible ring is
+   what makes it focus-visible. The label chip mirrors PocketChat's
+   honest sample-prompt label. */
+button.creation-new {
+  flex: 1;
+  min-height: 44px;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0.5rem;
+  padding: 1rem 1.15rem;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  text-align: left;
+  color: var(--text-dim);
+}
+
+.creation-new-plus {
+  font-size: var(--font-size-page-title);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+
+/* Keep the base button hover calm here: only the surface shifts and the
+   title picks up the accent, not the whole card's dim copy. */
+button.creation-new:hover:not(:disabled) {
+  color: var(--text-dim);
+}
+
+.creation-new-title {
+  font-size: var(--font-size-card-title);
+  font-weight: 700;
+  color: var(--text);
+}
+
+button.creation-new:hover:not(:disabled) .creation-new-title {
+  color: var(--accent);
+}
+
+.creation-new-description {
+  color: var(--text-dim);
+}
+
+/* Fixed prototype copy, labelled as such — same treatment as PocketChat's
+   `prototype · sample data` chip. */
+.creation-new-label {
+  padding: 1px 0.6rem;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.creation-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+.creation-name {
+  margin: 0;
+  font-size: var(--font-size-card-title);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.creation-badge {
+  flex-shrink: 0;
+  padding: 0.05rem 0.6rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Draft rides the warn tone; installed rides the accent (success). */
+.creation-badge-draft {
+  background: var(--surface);
+  color: var(--warn);
+}
+
+.creation-badge-installed {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.creation-description {
+  margin: 0.25rem 0 0;
+  color: var(--text-2);
+  min-height: calc(var(--line-height-base) * 2em);
+  overflow-wrap: anywhere;
+}
+
+.creation-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0.45rem 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.creation-card-meta-item + .creation-card-meta-item::before {
+  content: "·";
+  margin-right: 0.5rem;
+  color: var(--text-faint);
+}
+
+.creation-build-summary {
+  margin: 0.5rem 0 0;
+  color: var(--text-dim);
+}
+
+/* Footer block anchored to the card bottom so URL, resource usage, buttons,
+   and disclosures stay tightly paired and aligned across grid cards
+   regardless of description length. */
+.creation-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.creation-lifecycle {
+  display: grid;
+  /* minmax(0, …): the track must not grow to fit its content, or a long
+     address plus the Tailscale badge pushes the row past the card edge. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.creation-lifecycle p {
+  margin: 0;
+}
+
+.creation-lifecycle code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text-2);
+}
+
+/* The status in the card header: pip and word, one quiet usage figure,
+   and the exact CPU / memory panel that opens on hover or keyboard focus. */
+.creation-card-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  line-height: var(--line-height-base);
+  white-space: nowrap;
+}
+
+.creation-card-status:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.creation-card-status-figure {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.creation-card-status-figure[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.creation-usage {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 8px);
+  right: -6px;
+  display: none;
+  grid-template-columns: auto auto;
+  gap: 2px var(--space-16);
+  margin: 0;
+  padding: var(--space-8) var(--space-10);
+  background: var(--selected);
+  border: 1px solid var(--border-input);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.creation-card-status:hover .creation-usage,
+.creation-card-status:focus-visible .creation-usage {
+  display: grid;
+}
+
+.creation-usage-item {
+  display: contents;
+}
+
+.creation-usage dt {
+  color: var(--text-dim);
+}
+
+.creation-usage dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.creation-lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.creation-review {
+  display: grid;
+  /* Without the explicit track, the implicit `auto` column takes its
+     content-based minimum from the Containerfile `pre` (a scroll container
+     still contributes its min-content width — the longest line), so the
+     track grew past the card and the pre painted over the neighbouring
+     card. `minmax(0, 1fr)` pins the track to the card; the pre's own
+     `overflow: auto` then scrolls it. Paired with `min-width: 0` on
+     .creation-card, which fixes the same content floor one level up. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: var(--space-8);
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--border);
+}
+
+/* Honest snapshot-and-build notes inside the optional Technical details
+   area: calm guidance, not a warning wall. */
+.creation-notes {
+  margin: 0;
+  padding: 0.7rem 1rem 0.7rem 1.9rem;
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.creation-notes li + li {
+  margin-top: 0.35rem;
+}
+
+.creation-review-title {
+  margin: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.creation-meta {
+  font-weight: 400;
+}
+
+/* Keeps the Containerfile verbatim with scrollbars instead of rewrapping it. */
+.creation-containerfile {
+  max-height: 16rem;
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: auto;
+}
+
+/* Long snapshot inventories scroll inside the card instead of stretching it. */
+.creation-files {
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 12rem;
+  margin: 0.5rem 0 0;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.creation-files li {
+  min-width: 0;
+}
+
+.creation-digest {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* Honest snapshot-and-build notes for the primary flow: the calm guidance
+   and the succinct progress/failure/success line live here, outside
+   Technical details, with the full log kept inside it. The Build/Update
+   button itself lives in the card's shared action row below, so this
+   section is copy only; the top border still separates it from the card's
+   content above. */
+.creation-build-section {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+/* Highlighted callout when local folder edits (or saved snapshot changes)
+   differ from the installed Pocket and are ready to apply via Update. */
+.creation-update-notice {
+  margin: 0;
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* The Build/Update action in the card's shared action row: the one button
+   with real weight in the row. */
+.creation-build {
+  font-weight: 600;
+}
+
+.creation-build-log-block {
+  width: 100%;
+  display: grid;
+  gap: 0.4rem;
+}
+
+/* Live native log: verbatim text, wrapped for readability and scroll-capped
+   so long builds cannot stretch the card. */
+.creation-build-log {
+  max-height: 14rem;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 30rem) {
+  .creation-card {
+    padding: 0.85rem 0.9rem;
+  }
+
+  button.creation-new {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .creation-notes {
+    padding: 0.6rem 0.75rem 0.6rem 1.5rem;
+  }
+}
+
+/* Primary card actions sit directly under the URL and resource usage. */
+.creation-card-actions {
+  margin-top: 0;
+}
+
+/* One row that never wraps: the main actions share the width, Stop and
+   the ⋯ menu keep their own size, and anything rare or destructive lives
+   in the menu. */
+.creation-card-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+/* Row buttons keep their intrinsic box and a uniform 34px height so buttons
+   with an icon (Visit) match text-only siblings to the pixel. */
+.creation-card-actions button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.creation-card-buttons > button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.creation-card-buttons > button.creation-stop {
+  flex: none;
+  gap: 7px;
+}
+
+.creation-stop-icon {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+}
+
+/* The ⋯ menu: a square trigger and a small list anchored under it. */
+.creation-menu {
+  position: relative;
+  flex: none;
+}
+
+.creation-card-actions .creation-menu-button {
+  width: 34px;
+  padding: 0;
+}
+
+.creation-menu-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) 0;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+}
+
+.creation-card-actions .creation-menu-item {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  padding: var(--space-8) var(--space-12);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.creation-card-actions .creation-menu-item:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+.creation-card-actions .creation-menu-item.creation-menu-danger:not(:disabled) {
+  color: var(--danger);
+}
+
+.creation-card-actions .creation-menu-item:disabled {
+  color: var(--text-dim);
+}
+
+.creation-menu-divider {
+  height: 1px;
+  margin: var(--space-4) 0;
+  background: var(--border);
+}
+
+/* The Pocket's address without the scheme, a copy button at its end, and
+   the Tailscale badge when shared. When the row is too narrow for all
+   three, the badge wraps onto its own line instead of overflowing; an
+   address too long for a line on its own ends in "…". */
+.creation-address {
+  font-family: var(--font-mono);
+  font-size-adjust: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+  min-width: 0;
+}
+
+.creation-address-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.creation-card-footer .creation-address-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.creation-card-footer .creation-address-copy:hover {
+  background: var(--selected);
+  color: var(--text);
+}
+
+/* Data, Source history and Technical details as one list of full-width
+   rows at the bottom of the card, divided by hairlines and running to the
+   card's edges. Each row's body indents under its label. */
+.creation-card-disclosures {
+  display: grid;
+  /* One column that may shrink: an auto column would grow to the widest
+     unwrapped line in any section and push it past the card's edge. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: var(--space-4) -1.15rem -1rem;
+}
+
+.creation-card-disclosures > * {
+  border-top: 1px solid var(--border);
+}
+
+.creation-card-disclosures .section-disclosure {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 1.15rem;
+}
+
+.creation-card-disclosures .section-disclosure:hover {
+  background: color-mix(in srgb, var(--selected) 50%, var(--surface));
+}
+
+.creation-disclosure-meta {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.creation-card-disclosures .creation-data-body,
+.creation-card-disclosures .revision-history-body,
+.creation-card-disclosures .versions-body,
+.creation-card-disclosures .creation-review {
+  margin: 0;
+  padding: var(--space-4) 1.15rem 1rem calc(1.15rem + 16px);
+  border-top: 0;
+}
+
+.creation-data-body {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.creation-data-note {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* Export and Restore as two equal buttons; Reset set apart below. */
+.creation-data-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+/* Labels centred by flexbox, like the card's main action row, rather than
+   by text-align: a clipped, centred text line drifts with wide mono glyphs
+   such as "…". */
+.creation-data-actions button,
+.creation-data-reset button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-10);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.creation-data-actions button {
+  overflow: hidden;
+}
+
+.creation-data-reset {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--border);
+}
+
+.creation-data-reset-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.creation-data-reset-text .hint {
+  font-size: 12px;
+}
+
+.creation-data-reset button {
+  flex: none;
+}
+
+.creation-details-disclosure {
+  min-width: 0;
+}
+
+/* The Open/Visit word carries the external-link glyph after it. Inline
+   flex centers the icon on the word's middle instead of dropping it on
+   the text baseline, where it read as floating too high. */
+button.creation-visit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button.creation-visit svg {
+  flex: none;
+}
+
+/* --- Delete confirmation -------------------------------------------------
+   The per-card delete is a quiet button in the shared action row until
+   asked; the modal carries the full weight of the warning. Destructive
+   actions ride the warn token — the palette has no separate danger color —
+   and the modal only ever renders for an explicitly asked delete: there is
+   no ambient destructive affordance. */
+button.creation-delete {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button.creation-delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+}
+
+button.creation-delete:disabled {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.creation-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+.creation-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.creation-modal-title {
+  margin: 0;
+}
+
+.creation-modal-warning {
+  margin: 0;
+  color: var(--danger);
+}
+
+.creation-modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-dim);
+}
+
+/* Mirrors the settings-panel field treatment for visual continuity. */
+.creation-modal input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+}
+
+.creation-modal input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.creation-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* The enlarge overlay, mounted on the shared `.creation-modal-backdrop`
+   scrim. The frame tops out at 82rem of content — just past a capture's
+   1280 logical px, so big windows show it at true size and smaller ones
+   fill responsively. `overflow: hidden` pairs with the image's
+   `width: 100%` so a legacy stored capture of any odd size letterboxes
+   inside the frame instead of stretching it; the 16/9 box simply never
+   binds next to a real 1280×720 capture. The caption keeps dating the
+   picture at full size — enlarging changes the viewing, never the claim. */
+.creation-lightbox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(82rem, 100%);
+  overflow: hidden;
+  padding: 0.9rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.creation-lightbox-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.creation-lightbox-caption {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+button.creation-lightbox-close {
+  position: absolute;
+  top: 1.4rem;
+  right: 1.4rem;
+}

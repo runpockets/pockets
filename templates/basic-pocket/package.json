@@ -1,0 +1,20 @@
+{
+  "name": "pockets-__POCKET_ID__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Basic Pocket starter: dependency-free Node server with /health and a persistent visit count",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

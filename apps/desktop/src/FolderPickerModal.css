@@ -1,0 +1,119 @@
+.folder-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.folder-picker-dialog {
+  width: min(560px, 100%);
+  max-height: min(620px, 90vh);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111827);
+  border: 1px solid var(--border, rgba(15, 23, 42, 0.14));
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+}
+
+.folder-picker-header h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.folder-picker-header .hint {
+  margin: 0;
+}
+
+.folder-picker-pathbar {
+  display: flex;
+  gap: 8px;
+}
+
+.folder-picker-pathbar input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.folder-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.folder-picker-hidden-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.folder-picker-list {
+  flex: 1;
+  min-height: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border, rgba(15, 23, 42, 0.12));
+  border-radius: 10px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-picker-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-picker-row:hover {
+  background: var(--surface-hover, rgba(15, 23, 42, 0.06));
+}
+
+.folder-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+  flex-shrink: 0;
+}
+
+.folder-picker-empty,
+.folder-picker-error {
+  margin: 8px 10px;
+}
+
+.folder-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

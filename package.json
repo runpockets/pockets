@@ -1,0 +1,26 @@
+{
+  "name": "pockets",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "pocket": "node packages/pocket-tools/src/cli.js",
+    "dev:web": "npm run dev:web --workspace @pockets/desktop",
+    "dev:daemon": "cargo run -p pockets-cli -- serve --dev-origin http://localhost:1420",
+    "build:web": "npm run build:web --workspace @pockets/desktop",
+    "build": "npm run build:web && cargo build --release -p pockets-cli",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:desktop": "npm run test --workspace @pockets/desktop",
+    "test:gateway": "node --test crates/pockets-core/src/assets/preview-egress.check.cjs",
+    "test:schema": "node --test packages/pocket-spec/schema.test.cjs",
+    "test:rust": "cargo test --workspace",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  }
+}

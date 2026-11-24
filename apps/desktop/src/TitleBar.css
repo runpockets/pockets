@@ -1,0 +1,87 @@
+/* Styles for TitleBar: the one 52px header row each visible column mounts
+   (pockets-design-update-v3.md §1.4). Height and bottom border are fixed
+   here so every column's border lands on the same y and reads as one
+   continuous line. Slots: `leading` controls, a truncating `title`,
+   `trailing` controls pinned right. The row itself drags the window
+   (useTitlebarDrag) and its text is chrome, never content. Flat by
+   contract: square corners, no shadows, every color a token. */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-8);
+  flex: none;
+  height: var(--titlebar-h);
+  padding: 0 var(--space-12);
+  overflow: hidden;
+  user-select: none;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+/* The leftmost visible column's header reserves the traffic-light strip:
+   the three lights end at x ≈ 78 (x 18 + three 14px buttons and their
+   gaps), so 92px leaves the same ~14px gap Claude's window keeps.
+   Only ever set inside Tauri and never in full screen — TitleBar decides,
+   this rule just draws it. */
+.titlebar[data-reserve-lights="true"] {
+  padding-left: 92px;
+}
+
+.titlebar-leading {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-8);
+}
+
+/* The only truncating slot: a long pocket name or URL ellipsises instead of
+   wrapping the row or pushing the trailing controls out. */
+/* Every column title reads the same: 13px, weight 500, --text — whether
+   the column passes plain text, an h1 or an h2. */
+.titlebar-title {
+  font-weight: 500;
+  color: var(--text);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-trailing {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-8);
+  margin-left: auto;
+}
+
+/* Block headings inside the title slot (the page and preview titles)
+   truncate on their own box: an ellipsis on the slot alone only reaches
+   inline content. */
+.titlebar-title > h1,
+.titlebar-title > h2 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Title-row toggles carry their state in `aria-pressed` and in the layout
+   itself (the column is visibly open), so the row draws no pressed fill:
+   a permanent grey square beside the traffic lights reads as a stuck
+   button. Hover still paints --selected. */
+.titlebar .icon-button[aria-pressed="true"] {
+  background: transparent;
+  color: var(--text-2);
+}
+
+.titlebar .icon-button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--selected);
+  color: var(--text);
+}

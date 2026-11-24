@@ -1,0 +1,16 @@
+apiVersion: pockets.dev/v1alpha1
+kind: Pocket
+metadata:
+  id: hello-pocket
+  name: Hello Pocket
+  version: "0.1.0"
+  description: A small persistent web app you control.
+runtime:
+  image: localhost/pockets-hello:0.1.0
+  architectures: [arm64, amd64]
+web:
+  port: 8080
+  healthcheck: /health
+storage:
+  name: data
+  path: /data

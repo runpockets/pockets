@@ -1,0 +1,35 @@
+/* Bundled for offline desktop use. License: assets/fonts/OFL.txt.
+   Source: Google Fonts, JetBrains Mono v24 (weights 400, 500, 700); the
+   v2 design adds weight 600 (SemiBold, JetBrains/JetBrainsMono master).
+   Mono advance widths match across releases, so the mix keeps alignment. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-Medium.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-SemiBold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-Bold.ttf") format("truetype");
+}

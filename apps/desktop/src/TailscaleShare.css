@@ -1,0 +1,246 @@
+/* Styles for Tailscale sharing disclosures, QR code presentation, and the
+   secondary Tailscale status card. Uses semantic tokens from tokens.css and
+   follows the flat, zero-radius desktop aesthetic. */
+
+.tailscale-panel-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  margin: 0;
+}
+
+.tailscale-panel-host {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.tailscale-launcher-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-top: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--border);
+}
+
+.tailscale-launcher-qr {
+  flex: none;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  line-height: 0;
+}
+
+.tailscale-launcher-text {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.tailscale-launcher-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.tailscale-launcher-text .hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.creation-tailscale-direct {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.creation-card-disclosures .creation-tailscale-body {
+  margin: 0;
+  padding: var(--space-4) 1.15rem 1rem calc(1.15rem + 16px);
+  border-top: 0;
+  display: grid;
+  gap: var(--space-12);
+}
+
+.creation-tailscale-meta-active {
+  color: var(--ok);
+}
+
+.creation-tailscale-meta-warn {
+  color: var(--warn);
+}
+
+.creation-tailscale-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.creation-tailscale-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.creation-tailscale-label .hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+button.tailscale-switch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: 30px;
+  padding: 0 var(--space-10);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+button.tailscale-switch[aria-checked="true"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.tailscale-switch-pip {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text-faint);
+  background: transparent;
+}
+
+button.tailscale-switch[aria-checked="true"] .tailscale-switch-pip {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.creation-tailscale-active {
+  display: grid;
+  gap: var(--space-10);
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--border);
+}
+
+.creation-tailscale-url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.creation-tailscale-url {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.creation-tailscale-qr-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+button.creation-tailscale-qr-button {
+  flex: none;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+button.creation-tailscale-qr-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #ffffff;
+}
+
+.tailscale-qr-svg {
+  display: block;
+}
+
+.creation-tailscale-qr-copy {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.creation-tailscale-qr-copy p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.creation-tailscale-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.creation-tailscale-actions button {
+  height: 30px;
+  padding: 0 var(--space-10);
+  font-size: 12px;
+}
+
+/* Subtle quick-action button next to the local address when Tailscale is live. */
+button.creation-address-tailscale {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ok);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+button.creation-address-tailscale:hover:not(:disabled) {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+
+.creation-qr-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-12);
+  width: 100%;
+  max-width: 24rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  text-align: center;
+}
+
+.creation-qr-modal-frame {
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  line-height: 0;
+}
+
+.creation-qr-modal-url {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.creation-qr-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-8);
+  width: 100%;
+}

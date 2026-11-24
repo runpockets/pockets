@@ -1,0 +1,16 @@
+apiVersion: pockets.dev/v1alpha1
+kind: Pocket
+metadata:
+  id: personal-notes
+  name: Personal Notes
+  version: "0.1.0"
+  description: A single shared plain-text note with explicit save and local persistence.
+runtime:
+  image: localhost/pockets-personal-notes:0.1.0
+  architectures: [arm64]
+web:
+  port: 8080
+  healthcheck: /health
+storage:
+  name: data
+  path: /data

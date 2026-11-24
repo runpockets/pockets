@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pockets.dev/schemas/pocket-v1alpha1.schema.json",
+  "title": "Pocket",
+  "description": "Experimental M1 subset of the pockets.dev/v1alpha1 Pocket manifest. A deliberately narrow development subset, not a stable public installation standard.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "runtime", "web", "storage"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "pockets.dev/v1alpha1"
+    },
+    "kind": {
+      "const": "Pocket"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["id", "name", "version", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Lowercase alphanumeric words separated by hyphens, at most 63 characters.",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "maxLength": 63
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name. Must not be empty.",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "Pocket version as a string. Must not be empty.",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Short description. Must not be empty.",
+          "minLength": 1
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["image", "architectures"],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "Container image reference. Nonempty, no whitespace, must not start with a hyphen.",
+          "pattern": "^[^\\s-][^\\s]*$"
+        },
+        "architectures": {
+          "type": "array",
+          "description": "Nonempty, unique subset of the supported architectures. Execution must match the host architecture.",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["arm64", "amd64"]
+          }
+        }
+      }
+    },
+    "web": {
+      "type": "object",
+      "required": ["port", "healthcheck"],
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "description": "Container port. The runtime allocates a loopback-only host port; the manifest never supplies one.",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "healthcheck": {
+          "type": "string",
+          "description": "Absolute HTTP path beginning with a single slash, with no whitespace, fragments, or query strings.",
+          "pattern": "^/(?!/)[^\\s?#]*$"
+        }
+      }
+    },
+    "previewApis": {
+      "type": "array",
+      "description": "API access requests for Desktop preview. Authorizations are stored separately.",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["host", "name", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "type": "string",
+            "maxLength": 253,
+            "pattern": "^(?!.*\\.(?:localhost|local|internal|test|invalid)$)(?!.*\\.home\\.arpa$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?![\\s\\S])"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e-\\u200f\\u2028-\\u202e\\u2066-\\u2069]+(?![\\s\\S])"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 240,
+            "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e-\\u200f\\u2028-\\u202e\\u2066-\\u2069]+(?![\\s\\S])"
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": ["name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Volume name. Lowercase alphanumeric words separated by hyphens, at most 63 characters.",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "maxLength": 63
+        },
+        "path": {
+          "type": "string",
+          "description": "Absolute container path composed of ordinary alphanumeric, underscore, dot, or hyphen segments. '.' and '..' segments are prohibited.",
+          "pattern": "^/(?!(?:\\.|\\.\\.)(?:/|$))[A-Za-z0-9_.-]+(?:/(?!(?:\\.|\\.\\.)(?:/|$))[A-Za-z0-9_.-]+)*$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+.new-project {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.new-project-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-24);
+}
+
+.new-project-inner {
+  display: grid;
+  align-content: start;
+  gap: var(--space-20);
+  max-width: 34rem;
+}
+
+.new-project-intro {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.new-project-content h2,
+.new-project-content p {
+  margin: 0;
+}
+
+.new-project form,
+.new-project label {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.new-project form {
+  gap: var(--space-16);
+}
+
+.new-project form > button,
+.new-project-existing > button {
+  justify-self: start;
+}
+
+.new-project input,
+.new-project textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.new-project input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.new-project textarea {
+  resize: vertical;
+}
+
+.new-project-existing {
+  display: grid;
+  gap: var(--space-10);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-16);
+}

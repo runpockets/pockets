@@ -1,0 +1,179 @@
+/* Styles for ResourceMonitor. New selectors are namespaced `resource-*` and
+   extend the shared primitives in styles.css (.card, .card-title, .badge,
+   buttons) without redefining them. Every color resolves through the semantic
+   tokens in tokens.css. Flat by contract: no radius, no gradients, sizes
+   inherit the base 13px. */
+
+.resource-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.resource-meta {
+  margin: 0;
+}
+
+/* Calm warn note for the native snapshot's warnings. */
+.resource-warnings {
+  padding: 0.65rem 1rem;
+  border-left: 3px solid var(--warn);
+  background: var(--surface);
+  color: var(--warn);
+}
+
+.resource-warnings-title {
+  margin: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.resource-warnings ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.resource-warnings li + li {
+  margin-top: 0.3rem;
+}
+
+/* Scope cards side by side, wrapping on narrow windows. */
+.resource-scopes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+/* Nested inside the shared .card, so the surface reads as a bordered block,
+   like .creation-card. */
+.resource-scope {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.9rem 1rem;
+}
+
+.resource-scope-title {
+  margin: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.resource-scope-subtitle {
+  margin: 0.1rem 0 0;
+  color: var(--text-dim);
+}
+
+.resource-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.9rem;
+  margin: 0.7rem 0 0;
+}
+
+.resource-facts dt {
+  color: var(--text-dim);
+}
+
+.resource-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-scope-foot {
+  margin: 0.7rem 0 0;
+  color: var(--text-dim);
+}
+
+.resource-pockets {
+  display: grid;
+  gap: 0.5rem;
+}
+
+/* Long metric tables scroll horizontally instead of squeezing columns. */
+.resource-table-wrap {
+  overflow-x: auto;
+}
+
+.resource-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.resource-table th,
+.resource-table td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.resource-table thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.resource-table tbody th {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Right alignment wins over the left-aligned base above via an extra class,
+   so no !important is needed. */
+.resource-table .resource-col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-col-note {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
+
+.resource-dash {
+  color: var(--text-dim);
+}
+
+/* Pill matching the shared .badge vocabulary for "data may be stale"
+   (warn: the numbers may not reflect the current moment). */
+.resource-stale {
+  display: inline-block;
+  padding: 0.05rem 0.6rem;
+  font-weight: 600;
+  line-height: 1.4;
+  background: var(--surface);
+  color: var(--warn);
+}
+
+/* Accessible-only text: em dash cells stay announced as "Unavailable". */
+.resource-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 30rem) {
+  .resource-scopes {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-scope {
+    padding: 0.8rem 0.85rem;
+  }
+
+  .resource-table th,
+  .resource-table td {
+    padding: 0.4rem 0.45rem;
+  }
+}

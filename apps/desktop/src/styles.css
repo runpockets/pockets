@@ -1,0 +1,866 @@
+/*
+ * Global shell styles for the routed pages (pockets-design-update-v2.md
+ * "Shell", restructured by pockets-design-update-v3.md §1): the three-column
+ * workspace — 248px pocket-selection column, chat, draggable divider,
+ * preview rail — and the Live pockets / Drafts management page, whose own
+ * card grid comes from CreationPanel.css. There is no full-width header any
+ * more: every column's own TitleBar is its slice of the single 52px title
+ * row, and the host stats and running count live in the sidebar footer.
+ *
+ * Every color is a `var(--token)` — the values live in tokens.css and appear
+ * nowhere else. Monospace at 13px/1.6; the neutral greys carry the UI and
+ * green/amber appear only for status and diffs. Radius 0 everywhere except
+ * the conversation (user bubble, composer and its two buttons). "JetBrains
+ * Mono" comes from fonts.css — bundled locally, never fetched over the
+ * network; without it the platform mono takes over unchanged.
+ */
+
+:root {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--text);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* The desktop shell never scrolls as a document (handoff: "only the
+   message list, the viewport and the code/logs panes scroll") — at any
+   window size. Panels live in columns and never reflow on top of each
+   other; the native window's minWidth keeps every column usable when all
+   are open. `overflow-wrap` is inherited, so long image names, URLs and
+   paths can break anywhere instead of widening a column. */
+body {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  /* Titles are weight 600 and color, never size games (v2 §4). */
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Scrollbars: a thin square thumb in the border tone on a clear track, so
+   a scrollable list (the sidebar, the transcript) never shows a heavy grey
+   bar. Hover darkens it slightly. Token colours only. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Reading text in the system sans (type option B, with card descriptions
+   kept mono). Only explanation copy switches: help and hint lines, empty
+   states, notes, warnings and errors. Names, titles, descriptions, buttons,
+   inputs, statuses, addresses, paths and figures stay JetBrains Mono.
+   font-size-adjust matches the sans x-height to the mono's, so 13px sans
+   sits at the same visual size as the 13px mono beside it. */
+.hint,
+.muted,
+.error,
+.note,
+.notice,
+.creation-lifecycle > p,
+.development-content > p,
+.preview-network-review p,
+.preview-empty-steps,
+.creation-modal-warning,
+.revision-confirm-text,
+.revision-notice-warning,
+.resource-scope-subtitle,
+.resource-scope-foot {
+  font-family: var(--font-sans);
+  font-size-adjust: 0.55;
+}
+
+/* Data inside reading text stays mono. */
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-size-adjust: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* A page hidden with `hidden` must take no space and reserve no native
+   rect: the workspace and the management page toggle this way (the native
+   preview itself is unmounted off the workspace, never just hidden). */
+[hidden] {
+  display: none !important;
+}
+
+/* v3 §1: the global top bar is gone. Each column's own `TitleBar` is its
+   slice of the single 52px title row (see TitleBar.css); the traffic lights
+   sit above the sidebar's `--chrome` background, and dragging rides
+   `useTitlebarDrag` on every row. The wordmark and the breadcrumb went with
+   the bar — the pocket's name leads the chat header, and the page title
+   leads the management column. The host label and running count moved to the
+   sidebar footer. */
+
+.notice {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+/* The routed body swaps between the workspace and the management page, both
+   inside the column shell; everything fills the remaining height below the
+   header. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Columns only, at every width (v3 §1.2, rail gone): the 248px pockets
+ * column and the content column. Panels never reflow on top of each other —
+ * the sidebar toggle in the title row drops the pockets track entirely, and
+ * the native window's minWidth (tauri.conf.json, 1024px) guarantees every
+ * column a usable width with all of them open — 248 + 360 + 340 plus the
+ * divider and borders fit exactly. minmax(0, …) inside the tracks keeps
+ * nested content from ever pushing a column past zero. */
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+
+.shell[data-sidebar-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The content column: exactly one page shows at a time (workspace grid or
+   management page), both owning their scroll inside this column. */
+.shell-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The management page's name in its title row (v3 §5): 600, the size the
+   wordmark used — the in-page h1 it replaced is visually hidden, so this
+   is the page's only visible title. */
+.page-head-title {
+  margin: 0;
+  font-size: var(--font-size-wordmark);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The workspace is chat, the draggable divider and the preview rail — never
+ * rows. The default keeps v2's `1fr 1.2fr` ratio; once the divider has been
+ * dragged App pins the preview track in px through an inline grid override
+ * (v3 §8.2), still with the chat's 360px floor. The divider column draws the
+ * boundary line, so the chat pane adds no border of its own. */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 1px 1.2fr;
+}
+
+.workspace[data-preview-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The divider (v3 §8.1): a 1px track that IS the column boundary, so the
+   title row's bottom border meets it with no gap. The hit area is a wider
+   invisible strip (3px each side) layered over the neighbouring columns;
+   the native preview pane sits above the DOM, so over the viewport only the
+   chat-side half is reachable, which is plenty. */
+.column-divider {
+  position: relative;
+  z-index: 2;
+  width: 1px;
+  min-width: 1px;
+  background: var(--border);
+  cursor: col-resize;
+}
+
+.column-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.column-divider:hover,
+.column-divider[data-dragging="true"] {
+  background: var(--border-strong);
+}
+
+.column-divider:focus-visible {
+  outline: none;
+  background: var(--accent);
+}
+
+.sidebar {
+  min-width: 0;
+  min-height: 0;
+  /* A column with a real `margin-top: auto`: the sidebar footer sits at the
+     bottom of the viewport while the list is short, and the column itself
+     scrolls only when the list outgrows it. */
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--chrome);
+  border-right: 1px solid var(--border);
+}
+
+/* The All-pockets management page (App keeps it mounted, hidden off-route;
+   CreationPanel's `.creation-*` CSS owns the card grid). Scroll lives in
+   the app, not the document, and nothing is clipped behind overflow —
+   everything else is one scroll down. */
+.pockets-host {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pockets-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.pockets-primary {
+  min-width: 0;
+}
+
+/* The management page is one flat surface (v2 §8: title, segments and grid
+   sit directly on the page). The panel root's shared `.card` skin would
+   frame the whole page in a second giant card, so this context alone drops
+   it — child `.creation-card` borders keep theirs, and the secondary
+   `.pane-details` controls are untouched. */
+.pockets-primary > .card {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.pockets-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The Appearance block: hint line plus the theme segments. */
+.appearance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px 14px;
+}
+
+/* Panes carry their own scroll; min-width: 0 and overflow-x: hidden keep
+   wide children (forms, tables, code) inside the column at 390px. */
+.pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The chat column never scrolls and adds no padding of its own: PocketChat
+   is header / scrolling transcript / composer, so the transcript owns the
+   scrollbar (§6) and the component owns every inset. An auto-scrolling
+   column here would shrink the header and composer to min-content instead
+   of letting the list absorb the overflow. */
+.pane-chat {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* Quiet controls inside a title row (v3 §7): the shared IconButton is
+   already borderless and transparent; inside a `TitleBar` it reads at
+   exactly 32×32, hover `--selected` (the global button hover), pressed
+   `--selected` fill. Text buttons get the same treatment per component
+   file, because each title row owns its own controls. */
+.titlebar .icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.pane-placeholder {
+  margin: auto;
+  max-width: 30rem;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* Placeholder title: a plain label, sentence case (v2: no bracketed
+   ASCII art). */
+.placeholder-title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Action row under an honest placeholder (not-found): centered like the
+   words above it. */
+.placeholder-actions {
+  justify-content: center;
+}
+
+/* The live-preview rail (PreviewPanel mounts here). The panel owns the v2
+   §7 insets itself — toolbar 10px 20px, URL bar and viewport inset 20px —
+   so the column adds no padding of its own and the two do not stack. */
+.preview-rail {
+  display: flex;
+  padding: 0;
+  gap: 0;
+}
+
+/* --------------------------------------------------------------- status */
+
+/* Status is a 7×7px square pip always followed by a capitalized word
+   (§4) — never a text glyph, never color alone. */
+.status-line-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-pip {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: none;
+}
+
+.status-pip[data-tone="ok"] {
+  background: var(--ok);
+}
+
+.status-pip[data-tone="warn"] {
+  background: var(--warn);
+}
+
+.status-pip[data-tone="stopped"] {
+  border: 1px solid var(--text-faint);
+}
+
+/* The two allowed animations (v2 §4). Both are static — not merely
+   paused — under prefers-reduced-motion. */
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid var(--warn);
+  border-right-color: transparent;
+  animation: spinner-rotate 1.2s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.working-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.working-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--text-dim);
+  animation: dots-pulse 1.2s ease-in-out infinite;
+}
+
+.working-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.working-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Screen-reader label for the otherwise decorative dots. */
+.working-dots-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes dots-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .working-dot {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ segmented */
+
+/* The segmented control replaces v1's `[bracketed]` tabs (§7): outer 1px
+   border, 2px padding, 2px gap between square segments. */
+.segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+}
+
+.segmented-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.segmented-item:hover:not(:disabled):not([aria-selected="true"]) {
+  color: var(--text);
+  background: transparent;
+}
+
+.segmented-item[aria-selected="true"] {
+  background: var(--segment-active);
+  color: var(--text);
+}
+
+.segmented-count {
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------- icon button */
+
+/* Quiet 34×34 icon button for toolbars: no border and no fill, so a
+   collapse toggle beside the traffic lights reads as chrome rather than a
+   boxed control (the global button rule's radius already keeps it square).
+   Hover is the global `button:hover` `--selected` tint; a pressed toggle —
+   IconButton renders the state as `aria-pressed` — keeps that same fill
+   permanently, so the state stays legible without a border. The accessible
+   name is the button's aria-label, never the icon. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.icon-button[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------- controls */
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+button:disabled {
+  color: var(--text-dim);
+  border-color: var(--border);
+  cursor: default;
+}
+
+/* Primary action fill: one clear CTA per view or card using the --accent /
+   --on-accent pair defined in tokens.css. */
+button.button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 85%, var(--bg));
+}
+
+button.button-primary:disabled {
+  background: var(--surface);
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: 0;
+  padding: 6px 8px;
+  max-width: 100%;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------- text tones */
+
+.dim {
+  color: var(--text-dim);
+}
+
+/* Status tones are the only place green/amber appear (§1). */
+.tone-live {
+  color: var(--ok);
+}
+
+.tone-warm {
+  color: var(--warn);
+}
+
+.tone-dim {
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------- primitives */
+
+/* A label for assistive tech that must stay out of the picture (v3 §5: the
+   management page's h1 keeps labelling its grid and delete dialog while the
+   title row carries the visible name). Clip, never `hidden` — the attribute
+   would drop it from the accessibility tree too. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.card {
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+}
+
+.card + .card {
+  margin-top: 12px;
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-title {
+  margin: 0 0 10px;
+  font-size: 1em;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.card-top .card-title {
+  margin-bottom: 0;
+}
+
+.card-details {
+  margin-top: 10px;
+}
+
+/* Secondary management blocks on the management page: real content, one
+   deliberate click away below the grid. */
+.pane-details {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.pane-details > summary {
+  padding: 9px 16px;
+}
+
+.pane-details[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-details .card {
+  border: 0;
+}
+
+/* Every disclosure in the app looks the same: the browser's triangle is
+   replaced by one thin chevron (right when closed, down when open), the
+   label is regular weight in --text-2, and hover lifts it to --text. Each
+   container only sets its own padding. */
+summary,
+.section-disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::before,
+.section-disclosure::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 2px 0 1px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+details[open] > summary::before,
+.section-disclosure[aria-expanded="true"]::before {
+  transform: rotate(45deg);
+}
+
+summary:hover,
+.section-disclosure:hover {
+  color: var(--text);
+}
+
+.section-disclosure {
+  border: 0;
+  padding: calc(var(--space-6) + 1px) 0;
+}
+
+button.section-disclosure,
+button.section-disclosure:hover:not(:disabled) {
+  background: transparent;
+}
+
+.runtime-status p {
+  margin: 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-weight: 500;
+}
+
+.badge-ready,
+.badge-running {
+  color: var(--ok);
+}
+
+.badge-unavailable,
+.badge-missing {
+  color: var(--warn);
+}
+
+.badge-stopped {
+  color: var(--text-dim);
+}
+
+.chip {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.pocket-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pocket-name {
+  margin: 0;
+  font-size: var(--font-size-card-title);
+  font-weight: 600;
+}
+
+.pocket-description {
+  margin: 6px 0 0;
+  color: var(--text-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0 0;
+}
+
+.facts dt {
+  color: var(--text-dim);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.lifecycle {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.lifecycle p {
+  margin: 0;
+}
+
+.lifecycle p + p {
+  margin-top: 8px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.actions + .hint {
+  margin-top: 8px;
+}
+
+.muted,
+.hint {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.strong {
+  color: var(--text);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size-adjust: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0 4px;
+}

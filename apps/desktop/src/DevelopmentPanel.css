@@ -1,0 +1,44 @@
+/* Matches .pane-details framing (styles.css) so every workspace disclosure
+   shares one consistent bordered surface and header treatment. */
+.development-content {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-16);
+}
+
+.development-content p {
+  margin: 0;
+}
+
+.development-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-10);
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.development-folder code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.development-folder-actions {
+  display: flex;
+  flex: none;
+}
+
+.development-connection {
+  color: var(--text-2);
+}
+
+.development-content .actions {
+  margin-top: 0;
+  flex-wrap: wrap;
+}

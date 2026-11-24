@@ -1,0 +1,13 @@
+package-lock.json
+Cargo.lock
+dist/
+target/
+PROJECT_BRIEF.md
+apps/desktop/src-tauri/gen/
+# generated Tauri context schemas from the thumb spike build
+spikes/thumb/gen/
+spikes/pane/evidence/
+# vendored upstream artifact kept byte-for-byte (sha256 recorded in spikes/morph/RESULTS.md)
+spikes/morph/morphdom-umd.js
+# the same vendored morphdom asset embedded by the preview proxy (include_str!), kept byte-for-byte
+apps/desktop/src-tauri/src/assets/morphdom-umd.js

@@ -1,0 +1,356 @@
+.external-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.external-workspace-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-24);
+  display: grid;
+  align-content: start;
+  gap: var(--space-20);
+}
+
+.external-workspace-section {
+  display: grid;
+  gap: var(--space-12);
+  min-width: 0;
+}
+
+.external-workspace-install {
+  min-width: 0;
+}
+
+.external-workspace-install:empty {
+  display: none;
+}
+
+.external-workspace-subheading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.external-workspace-content h2,
+.external-workspace-content p {
+  margin: 0;
+}
+
+.preview-log-content {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-16);
+}
+
+.preview-log-content button {
+  justify-self: start;
+}
+
+.preview-network {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Same header as the Preview logs / Runtime variables sections beside it
+   (.pane-details): padding only — chevron, weight and colour are shared. */
+.preview-network > summary {
+  padding: 9px 16px;
+}
+
+.preview-network[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-network[data-approval-needed="true"] > summary {
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+}
+
+/* "2 allowed" on the right of the header, so the count shows closed. */
+.preview-network-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.preview-network-notice:not(:empty) {
+  margin-inline-start: var(--space-8);
+  color: var(--warn);
+}
+
+.preview-network .runtime-settings {
+  padding: var(--space-12) var(--space-16);
+  gap: var(--space-10);
+}
+
+/* The form label is a small dim caption over its input. */
+.preview-network-manual label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.preview-network code {
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow-wrap: anywhere;
+}
+
+.preview-network button {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.preview-network .preview-network-primary:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.preview-network .preview-network-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--bg));
+}
+
+.preview-network button:disabled {
+  color: var(--text-dim);
+}
+
+.preview-network button:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+.preview-network-review ul {
+  display: grid;
+  gap: var(--space-8);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.preview-network-review code {
+  display: block;
+  color: var(--text-2);
+}
+
+.preview-network-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+
+.preview-network .preview-network-error {
+  padding: var(--space-8) var(--space-12);
+}
+
+/* What the list means, in one line above it. */
+.preview-network .preview-network-intro {
+  margin: 0;
+}
+
+/* The saved hostnames as one bordered list. Each row stacks the service
+   name, its hostname and (when declared) its purpose, with no fixed height,
+   so nothing clips at narrow widths; a small × at the top right removes it. */
+.preview-network-hosts {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.preview-network-hosts li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-6) var(--space-10) var(--space-12);
+}
+
+.preview-network-hosts li + li {
+  border-top: 1px solid var(--border);
+}
+
+.preview-network-hosts .preview-network-empty {
+  padding: var(--space-12);
+}
+
+.preview-network-host-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preview-network-host-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preview-network-hosts .preview-network-host-matched {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* The declared purpose is reading text: system sans, at most two lines. */
+.preview-network-host-purpose {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: var(--space-4) 0 0;
+  font-family: var(--font-sans);
+  font-size-adjust: 0.55;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.preview-network-host-manual {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.preview-network .preview-network-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-dim);
+}
+
+.preview-network .preview-network-remove:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* Add a hostname: the label on one line, then the input and a short Add
+   button of the same 32px height, so even a narrow column fits. */
+.preview-network-manual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin-block-start: var(--space-4);
+}
+
+.preview-network-manual-row {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.preview-network-manual input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--border-input);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size-base);
+}
+
+.preview-network-manual input:disabled {
+  border-color: var(--border);
+}
+
+.preview-network .preview-network-manual button {
+  flex: none;
+  height: 32px;
+  padding: 0 var(--space-14);
+  border: 1px solid var(--border-strong);
+}
+
+.runtime-settings,
+.runtime-variable-form {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.runtime-settings {
+  padding: var(--space-12) var(--space-16);
+}
+
+.runtime-settings-field {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-6);
+}
+
+.runtime-settings-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.runtime-settings label {
+  display: grid;
+  gap: var(--space-4);
+  color: var(--text-2);
+}
+
+.runtime-variable-form input,
+.runtime-variable-form select {
+  min-width: 0;
+}
+
+.runtime-settings > label,
+.runtime-settings > button {
+  justify-self: start;
+}
+
+.runtime-variables {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.runtime-variables li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-10);
+  overflow-wrap: anywhere;
+}
+
+.runtime-variables li + li {
+  border-top: 1px solid var(--border);
+}
+
+.runtime-variables .actions {
+  margin-top: 0;
+}
+
+.runtime-variable-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.runtime-variable-value {
+  color: var(--text-2);
+}

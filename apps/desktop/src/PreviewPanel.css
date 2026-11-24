@@ -1,0 +1,193 @@
+/* Styles for PreviewPanel (pockets-design-update-v3.md §6/§9). Selectors
+   are namespaced `preview-*` and extend the primitives in styles.css
+   (.card, .status-pip, .icon-button, buttons) plus the shared `.titlebar`
+   row (TitleBar.css) without redefining them; every color resolves through
+   the semantic tokens in tokens.css. Flat by contract: radius 0, no
+   gradients, no shadows — the rounded shapes live only in the chat. */
+
+/* Full-screen workspace: the card fills the `.preview-rail` column of the
+   app grid (styles.css) and stacks title bar, URL strip, status lane and
+   the reserved viewport top to bottom, so the viewport grows to whatever
+   window height is left and sits edge to edge with no side padding
+   anywhere below the title row. The management surface never carries the
+   rail's border — this card is only ever the workspace pane. */
+.preview-rail .card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: var(--bg);
+}
+
+/* The header row is the shared `TitleBar` (v3 §6.1): its height, border
+   and slots come from TitleBar.css, and the old `.preview-toolbar` box is
+   gone. What lives here is only the h2 the title slot carries. */
+.preview-title {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 500;
+}
+
+/* The Stop/Start text button (v3 §7): a quiet title-row control — 32px
+   tall, no border, transparent, --text-2; the global hover rule paints
+   --selected. The global button skin is for content, not for the title
+   row, so it is dropped here exactly like the provider button in chat. */
+.preview-power {
+  flex: none;
+  height: var(--space-32);
+  padding: 0 var(--space-10);
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+}
+
+/* URL strip (v3 §6.2): a full-width row directly under the header — no
+   margins — pip + address left, state word right, 32px tall, closed by its
+   own bottom border. The address truncates with an ellipsis so a long
+   loopback URL can never blow out the row (§10: nothing wraps). */
+.preview-url-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex: none;
+  height: var(--space-32);
+  padding: 0 var(--space-12);
+  border-bottom: 1px solid var(--preview-frame);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.preview-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.preview-url-copy {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.preview-url-empty {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.preview-state {
+  margin-left: auto;
+  padding-left: var(--space-12);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* The status lane (v3 §6.3): a full-width row when not empty — its own
+   inset and bottom border, no margins — and it still only takes vertical
+   space while it holds a message. Nothing here is hidden by the native
+   pane: it sits above the viewport. */
+.preview-status:not(:empty) {
+  flex: none;
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-status > * + * {
+  margin-top: 6px;
+}
+
+.preview-status p {
+  margin: 0;
+}
+
+/* The region the native preview pane is placed over — the rect reported
+   through `onBounds` — fills the rest of the column edge to edge (v3 §6.4):
+   no margin, no padding, no frame. The URL strip's bottom border and the
+   column divider now frame the pocket. Children are centred so the guidance
+   lines never need padding on the region itself, and under an open overlay
+   (v3 §9.2) the snapshot or the pocket name takes their place inside the
+   very same element. */
+.preview-viewport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 220px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Empty-state and guidance text: centred inside the reserved rect with its
+   own inset — the rect itself stays flush for the native pane. */
+.preview-viewport > p {
+  margin: 0;
+  padding: var(--space-16);
+  max-width: 48ch;
+  text-align: center;
+}
+
+.preview-viewport-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16);
+  max-width: 44ch;
+  text-align: center;
+}
+
+.preview-empty-guide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: var(--space-24);
+  max-width: 46ch;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.preview-empty-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preview-empty-steps {
+  margin: 0;
+  padding-left: var(--space-20);
+  display: grid;
+  gap: var(--space-6);
+  color: var(--text-2);
+}
+
+/* Overlay fallback (v3 §9.2): the recent capture standing in for the
+   hidden native pane, filling the rect cover-cropped, muted so it never
+   reads as the live view. */
+.preview-overlay-snapshot {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.6;
+}
+
+/* Without a snapshot: the pocket name, centred on plain --bg in
+   --text-dim. */
+.preview-overlay-name {
+  color: var(--text-dim);
+}
+
+.preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
+}
