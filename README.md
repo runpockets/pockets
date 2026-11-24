@@ -1,4 +1,8 @@
-# Pockets
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/pockets-wordmark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="brand/pockets-wordmark-light.svg" />
+  <img alt="Pockets" src="brand/pockets-wordmark-light.svg" height="44" />
+</picture>
 
 **Run personal self-hosted web apps locally — without managing containers.**
 

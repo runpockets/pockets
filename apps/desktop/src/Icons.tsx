@@ -214,3 +214,22 @@ export function IconMonitor(props: IconProps) {
     </svg>
   );
 }
+
+/** Pockets brand mark (theme-aware via tokens.css). */
+export function IconPocketsMark({ className, size = 20 }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 500 500"
+      fill="none"
+      aria-hidden={true}
+      focusable={false}
+    >
+      <path d="M0 0 H500 V228 H92 V500 H0 V136 H408 V92 H0 Z" fill="var(--text, #ECECEC)" />
+      <rect x="136" y="272" width="364" height="92" fill="var(--ok, #6BCB8B)" />
+      <rect x="136" y="408" width="364" height="92" fill="var(--text-dim, #7A7A76)" />
+    </svg>
+  );
+}

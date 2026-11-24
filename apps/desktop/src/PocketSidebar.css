@@ -36,6 +36,22 @@
   background: var(--chrome);
 }
 
+.pocket-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding-left: var(--space-8);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.pocket-sidebar-brand svg {
+  flex: none;
+}
+
 /* Content buttons carry no chrome of their own unless a rule below adds
    one; the section rows and the list rows are deliberately borderless,
    flat, full-width surfaces. Scoped to the body so the `TitleBar`'s
@@ -130,18 +146,6 @@
   height: 1px;
   margin: var(--space-8) 0;
   background: var(--border);
-}
-
-/* The list label: the static word "Pockets", shown exactly as given (the
-   routed page's own words moved to the main column header, v3 §5; the v1
-   uppercase label is gone; nothing transforms the text here). */
-.pocket-sidebar-title {
-  margin: 0;
-  padding: var(--space-4) var(--space-10) var(--space-6);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text);
-  text-transform: none;
 }
 
 /* The list is the only scrolling part of the sidebar. */

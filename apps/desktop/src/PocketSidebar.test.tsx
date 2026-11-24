@@ -197,23 +197,21 @@ describe("PocketSidebar list", () => {
       "stopped",
     );
 
-    // The heading is the static word, shown as given (no uppercase
-    // transform); the v1 header count is gone.
-    expect(container.querySelector(".pocket-sidebar-title")?.textContent).toBe(
+    // The brand mark + "Pockets" wordmark lives in the top title row; no
+    // duplicate list heading or v1 header count appears below the divider.
+    expect(container.querySelector(".pocket-sidebar-brand")?.textContent).toBe(
       "Pockets",
     );
+    expect(container.querySelector(".pocket-sidebar-title")).toBeNull();
     expect(container.textContent).not.toContain("(2)");
   });
 
-  it("keeps the list label static on every page", () => {
-    // v3 §3.3: the routed page's words moved to the main column's header
-    // and the section rows; this label is the static word whatever the
-    // route — the old `title` prop behavior is gone.
+  it("keeps the sidebar brand wordmark static on every page", () => {
     const { container } = renderSidebar(makeCatalog(), { page: "live" });
-    expect(screen.getByRole("heading", { name: "Pockets" })).toBeTruthy();
-    expect(container.querySelector(".pocket-sidebar-title")?.textContent).toBe(
+    expect(container.querySelector(".pocket-sidebar-brand")?.textContent).toBe(
       "Pockets",
     );
+    expect(container.querySelector(".pocket-sidebar-title")).toBeNull();
   });
 
   it("carries the honest extra detail a status record holds, and never a port", () => {
@@ -1006,17 +1004,12 @@ describe("pocket sidebar layout contract", () => {
     expect(host).toContain("color: var(--text-dim);");
   });
 
-  it("gives the static list label its heading geometry with no uppercase transform", () => {
-    const title = soleRuleBody(sidebarCss, ".pocket-sidebar-title");
-    expect(title).toContain("font-size: var(--font-size-base);");
-    expect(title).toContain("font-weight: 600;");
-    expect(title).toContain("color: var(--text);");
-    expect(title).toContain("text-transform: none;");
-    expect(title).not.toContain("text-transform: uppercase");
-    expect(title).toContain(
-      "padding: var(--space-4) var(--space-10) var(--space-6);",
-    );
-    // The old uppercase metadata label is retired, not restyled.
+  it("styles the sidebar brand mark + wordmark in the title row", () => {
+    const brand = soleRuleBody(sidebarCss, ".pocket-sidebar-brand");
+    expect(brand).toContain("font-weight: 600;");
+    expect(brand).toContain("color: var(--text);");
+    // The old duplicate list heading and uppercase metadata label are retired.
+    expect(sidebarCss).not.toContain(".pocket-sidebar-title");
     expect(sidebarCss).not.toContain(".pocket-sidebar-label");
   });
 

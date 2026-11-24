@@ -94,10 +94,7 @@ vi.mock("./PocketSidebar", async () => {
           "data-page": props.page,
           "data-running-count": String(props.runningCount ?? "none"),
         },
-        // The list heading is the static word now (v3 §3.3): the page
-        // title moved to the main column's title row, asserted on App's
-        // own `TitleBar` below.
-        createElement("h2", { className: "pocket-sidebar-title" }, "Pockets"),
+        createElement("span", { className: "pocket-sidebar-brand" }, "Pockets"),
         // The section rows that replaced the nav rail (v3 §3.1).
         createElement(
           "button",
@@ -568,9 +565,7 @@ describe("App shell in the browser (no Tauri runtime)", () => {
       within(titleRow).queryByRole("button", { name: "Toggle sidebar" }),
     ).toBeNull();
     expect(titleRow.getAttribute("data-reserve-lights")).toBeNull();
-    expect(
-      within(sidebar()).getByRole("heading", { name: "Pockets" }),
-    ).toBeTruthy();
+    expect(within(sidebar()).getByText("Pockets")).toBeTruthy();
 
     fireEvent.click(
       within(sidebar()).getByRole("button", { name: "Toggle sidebar" }),

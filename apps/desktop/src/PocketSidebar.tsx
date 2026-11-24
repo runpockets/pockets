@@ -12,6 +12,7 @@ import {
   IconMoon,
   IconPanelLeft,
   IconPlus,
+  IconPocketsMark,
   IconSun,
 } from "./Icons";
 import { IconButton, Spinner, StatusPip, type PipTone } from "./Status";
@@ -360,23 +361,29 @@ export default function PocketSidebar({
         className="pocket-sidebar-titlebar"
         reserveTrafficLights
         leading={
-          <IconButton
-            label="Toggle sidebar"
-            title="Toggle sidebar ⌘B"
-            pressed
-            onClick={onToggleCollapsed}
-          >
-            <IconPanelLeft />
-          </IconButton>
+          <span className="pocket-sidebar-brand">
+            <IconPocketsMark size={18} />
+            <span className="pocket-sidebar-brand-name">Pockets</span>
+          </span>
         }
         trailing={
-          <IconButton
-            label="New pocket"
-            title="New pocket ⌘N"
-            onClick={onNewPocket}
-          >
-            <IconPlus />
-          </IconButton>
+          <>
+            <IconButton
+              label="New pocket"
+              title="New pocket ⌘N"
+              onClick={onNewPocket}
+            >
+              <IconPlus />
+            </IconButton>
+            <IconButton
+              label="Toggle sidebar"
+              title="Toggle sidebar ⌘B"
+              pressed
+              onClick={onToggleCollapsed}
+            >
+              <IconPanelLeft />
+            </IconButton>
+          </>
         }
       />
 
@@ -399,8 +406,6 @@ export default function PocketSidebar({
         )}
 
         <div className="pocket-sidebar-divider" aria-hidden="true" />
-
-        <h2 className="pocket-sidebar-title">Pockets</h2>
 
         <ul className="pocket-sidebar-list">
           {catalog.error !== null && (
