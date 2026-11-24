@@ -24,6 +24,8 @@ pockets
 2. Runs Pockets in the background (`brew services`) and initializes/starts your Podman VM automatically on first run.
 3. Opens `http://pockets.localhost:18786/` in your default browser already signed in.
 
+Already using Podman Desktop or the official macOS installer? Run `brew install --ignore-dependencies runpockets/tap/pockets` to reuse your existing Podman.
+
 Bookmark `http://pockets.localhost:18786/` (or use Safari **File → Add to Dock…** / Chrome **Install App**) — from then on your saved URL just works.
 
 ### Linux (Desktop, Raspberry Pi, Homelab, VPS)

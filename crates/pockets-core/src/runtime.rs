@@ -8,6 +8,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -71,9 +72,38 @@ impl DetectionReport {
     }
 }
 
-/// Locate the `podman` executable in `PATH` plus [`KNOWN_LOCATIONS`].
+/// Last `podman` executable confirmed to have a responding engine (or chosen
+/// during machine bootstrap), so multi-install setups (e.g. Homebrew Podman
+/// alongside Podman Desktop) consistently route commands to the active binary.
+static PREFERRED_PODMAN: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+fn preferred_podman() -> Option<PathBuf> {
+    let lock = PREFERRED_PODMAN.get_or_init(|| RwLock::new(None));
+    let guard = lock.read().ok()?;
+    guard.clone().filter(|path| is_executable_file(path))
+}
+
+fn set_preferred_podman(path: Option<PathBuf>) {
+    let lock = PREFERRED_PODMAN.get_or_init(|| RwLock::new(None));
+    if let Ok(mut guard) = lock.write() {
+        *guard = path;
+    }
+}
+
+/// Locate the `podman` executable in `PATH` plus [`KNOWN_LOCATIONS`],
+/// preferring a binary previously confirmed to be ready by [`detect_runtime`].
 pub fn find_podman() -> Option<PathBuf> {
+    if let Some(preferred) = preferred_podman() {
+        return Some(preferred);
+    }
     first_executable(&candidate_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ))
+}
+
+/// Locate all distinct executable `podman` binaries in `PATH` plus [`KNOWN_LOCATIONS`].
+pub fn find_all_podman() -> Vec<PathBuf> {
+    all_executables(&candidate_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     ))
 }
@@ -82,7 +112,7 @@ pub fn find_podman() -> Option<PathBuf> {
 pub fn missing_podman_message() -> String {
     #[cfg(target_os = "macos")]
     {
-        "Podman was not found on this computer. Install Pockets with Homebrew (`brew install pockets`) or run `brew install podman`, then retry.".to_owned()
+        "Podman was not found on this computer. Install Pockets with Homebrew (`brew install runpockets/tap/pockets`) or run `brew install podman`, then retry.".to_owned()
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
@@ -94,16 +124,9 @@ pub fn missing_podman_message() -> String {
     }
 }
 
-/// Probe the runtime without starting or modifying anything.
-///
-/// Runs `podman --version` to confirm the binary, then
-/// `podman info --format json` to confirm the engine is reachable.
-pub async fn detect_runtime() -> DetectionReport {
-    let Some(bin) = find_podman() else {
-        return DetectionReport::new(RuntimeState::Missing, missing_podman_message());
-    };
-
-    let version = match run(&bin, &["--version"]).await {
+/// Probe a single `podman` binary without starting or modifying anything.
+async fn probe_binary(bin: &Path) -> DetectionReport {
+    let version = match run(bin, &["--version"]).await {
         Ok(output) => parse_version(&output.stdout),
         Err(err) => {
             return DetectionReport::new(
@@ -113,7 +136,7 @@ pub async fn detect_runtime() -> DetectionReport {
         }
     };
 
-    if let Err(err) = run(&bin, &["info", "--format", "json"]).await {
+    if let Err(err) = run(bin, &["info", "--format", "json"]).await {
         let label = version.as_deref().unwrap_or("Podman");
         return DetectionReport {
             state: RuntimeState::Unavailable,
@@ -135,6 +158,48 @@ pub async fn detect_runtime() -> DetectionReport {
     }
 }
 
+/// Probe all discovered executable candidates in order and select the first one
+/// whose container engine responds, falling back to the first failure report.
+async fn detect_from_candidates(candidates: &[PathBuf]) -> (Option<PathBuf>, DetectionReport) {
+    let executables = all_executables(candidates);
+    if executables.is_empty() {
+        return (
+            None,
+            DetectionReport::new(RuntimeState::Missing, missing_podman_message()),
+        );
+    }
+
+    let mut first_failure: Option<DetectionReport> = None;
+    for bin in executables {
+        let report = probe_binary(&bin).await;
+        if report.state == RuntimeState::Ready {
+            return (Some(bin), report);
+        }
+        if first_failure.is_none() {
+            first_failure = Some(report);
+        }
+    }
+
+    (
+        None,
+        first_failure.unwrap_or_else(|| {
+            DetectionReport::new(RuntimeState::Missing, missing_podman_message())
+        }),
+    )
+}
+
+/// Probe the runtime without starting or modifying anything.
+///
+/// Checks every discovered `podman` binary (e.g. Homebrew and Podman Desktop
+/// installs), runs `podman --version` and `podman info --format json`, and
+/// remembers the first binary whose container engine responds.
+pub async fn detect_runtime() -> DetectionReport {
+    let candidates = candidate_paths(&std::env::var_os("PATH").unwrap_or_default());
+    let (ready_bin, report) = detect_from_candidates(&candidates).await;
+    set_preferred_podman(ready_bin);
+    report
+}
+
 /// Ensures the local Podman engine is initialized and started when a Podman
 /// machine VM is required (macOS / Windows), then returns a fresh detection
 /// report. On Linux, Podman runs natively without a VM so this probes directly.
@@ -144,20 +209,35 @@ pub async fn bootstrap_runtime() -> DetectionReport {
         return initial;
     }
 
-    let Some(bin) = find_podman() else {
-        return initial;
-    };
-
     #[cfg(any(target_os = "macos", windows))]
     {
-        // Inspect existing Podman machines without using a shell.
-        let machines = run(&bin, &["machine", "list", "--format", "json"]).await;
-        let has_machine = machines
-            .as_ref()
-            .ok()
-            .and_then(|out| serde_json::from_slice::<serde_json::Value>(&out.stdout).ok())
-            .and_then(|val| val.as_array().map(|arr| !arr.is_empty()))
-            .unwrap_or(false);
+        let binaries = find_all_podman();
+        if binaries.is_empty() {
+            return initial;
+        }
+
+        // Prefer a binary that already has an initialized Podman machine so we
+        // reuse an existing Podman Desktop / installer VM instead of creating a
+        // duplicate one.
+        let mut chosen_bin: Option<PathBuf> = None;
+        let mut has_machine = false;
+        for candidate in &binaries {
+            let machines = run(candidate, &["machine", "list", "--format", "json"]).await;
+            let candidate_has_machine = machines
+                .as_ref()
+                .ok()
+                .and_then(|out| serde_json::from_slice::<serde_json::Value>(&out.stdout).ok())
+                .and_then(|val| val.as_array().map(|arr| !arr.is_empty()))
+                .unwrap_or(false);
+            if candidate_has_machine {
+                chosen_bin = Some(candidate.clone());
+                has_machine = true;
+                break;
+            }
+        }
+
+        let bin = chosen_bin.unwrap_or_else(|| binaries[0].clone());
+        set_preferred_podman(Some(bin.clone()));
 
         if !has_machine {
             // Initial machine setup may download a ~500MB VM image on first run.
@@ -493,6 +573,26 @@ fn first_executable(candidates: &[PathBuf]) -> Option<PathBuf> {
         .cloned()
 }
 
+/// All distinct executable candidates in order, de-duplicated by canonical path
+/// so symlinked aliases (e.g. `/usr/local/bin/podman -> /opt/podman/bin/podman`)
+/// are only probed once.
+fn all_executables(candidates: &[PathBuf]) -> Vec<PathBuf> {
+    let mut executables = Vec::new();
+    let mut seen_canonical = Vec::new();
+    for path in candidates {
+        if !is_executable_file(path) {
+            continue;
+        }
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        if seen_canonical.contains(&canonical) {
+            continue;
+        }
+        seen_canonical.push(canonical);
+        executables.push(path.clone());
+    }
+    executables
+}
+
 fn is_executable_file(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
@@ -624,5 +724,75 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&shadowed);
         let _ = std::fs::remove_dir_all(&picked);
+    }
+
+    fn write_script_podman(dir: &Path, script: &str) -> PathBuf {
+        let path = dir.join(PODMAN_EXE);
+        std::fs::write(&path, script).expect("write fake podman script");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod fake podman script");
+        path
+    }
+
+    #[test]
+    fn all_executables_deduplicates_symlinks_to_same_binary() {
+        let real_dir = temp_dir("symlink-real");
+        let alias_dir = temp_dir("symlink-alias");
+        let real_bin = write_fake_podman(&real_dir, 0o755);
+        let alias_bin = alias_dir.join(PODMAN_EXE);
+        std::os::unix::fs::symlink(&real_bin, &alias_bin).expect("symlink fake podman");
+
+        let found = all_executables(&[alias_bin.clone(), real_bin.clone()]);
+        assert_eq!(found, vec![alias_bin]);
+
+        let _ = std::fs::remove_dir_all(&real_dir);
+        let _ = std::fs::remove_dir_all(&alias_dir);
+    }
+
+    #[tokio::test]
+    async fn detect_from_candidates_falls_back_to_ready_binary() {
+        let broken_dir = temp_dir("fallback-broken");
+        let healthy_dir = temp_dir("fallback-healthy");
+
+        let broken = write_script_podman(
+            &broken_dir,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 6.2.0'; exit 0; fi\necho 'Cannot connect to Podman' >&2\nexit 125\n",
+        );
+        let healthy = write_script_podman(
+            &healthy_dir,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 5.4.1'; exit 0; fi\necho '{\"host\":{}}'\nexit 0\n",
+        );
+
+        let (selected, report) = detect_from_candidates(&[broken, healthy.clone()]).await;
+        assert_eq!(selected, Some(healthy));
+        assert_eq!(report.state, RuntimeState::Ready);
+        assert_eq!(report.version.as_deref(), Some("5.4.1"));
+
+        let _ = std::fs::remove_dir_all(&broken_dir);
+        let _ = std::fs::remove_dir_all(&healthy_dir);
+    }
+
+    #[tokio::test]
+    async fn detect_from_candidates_returns_first_failure_when_none_ready() {
+        let first_dir = temp_dir("all-fail-first");
+        let second_dir = temp_dir("all-fail-second");
+
+        let first = write_script_podman(
+            &first_dir,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 6.2.0'; exit 0; fi\necho 'first machine stopped' >&2\nexit 125\n",
+        );
+        let second = write_script_podman(
+            &second_dir,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 5.4.1'; exit 0; fi\necho 'second machine stopped' >&2\nexit 125\n",
+        );
+
+        let (selected, report) = detect_from_candidates(&[first, second]).await;
+        assert_eq!(selected, None);
+        assert_eq!(report.state, RuntimeState::Unavailable);
+        assert_eq!(report.version.as_deref(), Some("6.2.0"));
+        assert!(report.message.contains("first machine stopped"));
+
+        let _ = std::fs::remove_dir_all(&first_dir);
+        let _ = std::fs::remove_dir_all(&second_dir);
     }
 }

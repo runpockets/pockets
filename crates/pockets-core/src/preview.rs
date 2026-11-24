@@ -2079,7 +2079,7 @@ impl PreviewSource for Workspace {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     /// Session id in the exact 32-hex shape the agent loop generates.
@@ -2158,9 +2158,15 @@ exit 0
                 let Ok((mut socket, _)) = server.accept().await else {
                     return;
                 };
+                // Drain the HTTP request before writing and closing; on Linux,
+                // closing a TCP socket with unread request bytes triggers RST
+                // and makes reqwest treat the probe as a connection reset.
+                let mut req = [0u8; 2048];
+                let _ = socket.read(&mut req).await;
                 let _ = socket
                     .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
                     .await;
+                let _ = socket.shutdown().await;
             }
         });
         (listener, port)
