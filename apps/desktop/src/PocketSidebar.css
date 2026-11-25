@@ -364,6 +364,46 @@
   background: var(--text-dim);
 }
 
+.pocket-sidebar-meter-cpu {
+  position: relative;
+  cursor: help;
+}
+
+.pocket-sidebar-meter-cpu:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pocket-sidebar-tooltip {
+  position: absolute;
+  z-index: 15;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: none;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-8) var(--space-10);
+  background: var(--selected);
+  border: 1px solid var(--border-input);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-size-adjust: 0.55;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.pocket-sidebar-meter-cpu:hover .pocket-sidebar-tooltip,
+.pocket-sidebar-meter-cpu:focus-visible .pocket-sidebar-tooltip {
+  display: flex;
+}
+
+.pocket-sidebar-tooltip-detail {
+  color: var(--text-dim);
+}
+
 .pocket-sidebar-theme {
   display: flex;
   align-items: center;

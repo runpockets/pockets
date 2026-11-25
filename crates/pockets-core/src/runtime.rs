@@ -60,6 +60,13 @@ pub struct DetectionReport {
     pub state: RuntimeState,
     pub message: String,
     pub version: Option<String>,
+    /// Number of virtual CPU cores available to the Podman engine (from
+    /// `podman info --format json` -> `.host.cpus`), when reported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_cores: Option<u32>,
+    /// Number of logical CPU cores on the host machine, when readable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_cpu_cores: Option<u32>,
 }
 
 impl DetectionReport {
@@ -68,6 +75,8 @@ impl DetectionReport {
             state,
             message: message.into(),
             version: None,
+            cpu_cores: None,
+            host_cpu_cores: None,
         }
     }
 }
@@ -136,17 +145,24 @@ async fn probe_binary(bin: &Path) -> DetectionReport {
         }
     };
 
-    if let Err(err) = run(bin, &["info", "--format", "json"]).await {
-        let label = version.as_deref().unwrap_or("Podman");
-        return DetectionReport {
-            state: RuntimeState::Unavailable,
-            message: format!(
-                "{label} is installed but the container engine is not responding. \
-                 If you use a Podman machine, start it and try again. {err}"
-            ),
-            version,
-        };
-    }
+    let info_output = match run(bin, &["info", "--format", "json"]).await {
+        Ok(output) => output,
+        Err(err) => {
+            let label = version.as_deref().unwrap_or("Podman");
+            return DetectionReport {
+                state: RuntimeState::Unavailable,
+                message: format!(
+                    "{label} is installed but the container engine is not responding. \
+                     If you use a Podman machine, start it and try again. {err}"
+                ),
+                version,
+                cpu_cores: None,
+                host_cpu_cores: host_cpu_cores(),
+            };
+        }
+    };
+
+    let cpu_cores = parse_cpu_cores(&info_output.stdout);
 
     DetectionReport {
         state: RuntimeState::Ready,
@@ -155,6 +171,8 @@ async fn probe_binary(bin: &Path) -> DetectionReport {
             None => "Podman is ready.".to_owned(),
         },
         version,
+        cpu_cores,
+        host_cpu_cores: host_cpu_cores(),
     }
 }
 
@@ -252,6 +270,8 @@ pub async fn bootstrap_runtime() -> DetectionReport {
                     state: RuntimeState::Unavailable,
                     message: format!("Could not initialize the Podman VM automatically. {err}"),
                     version: initial.version,
+                    cpu_cores: None,
+                    host_cpu_cores: host_cpu_cores(),
                 };
             }
         }
@@ -267,6 +287,8 @@ pub async fn bootstrap_runtime() -> DetectionReport {
                 state: RuntimeState::Unavailable,
                 message: format!("Could not start the Podman VM automatically. {err}"),
                 version: initial.version,
+                cpu_cores: None,
+                host_cpu_cores: host_cpu_cores(),
             };
         }
     }
@@ -620,6 +642,22 @@ fn parse_version(stdout: &[u8]) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// Extract `.host.cpus` from `podman info --format json` output.
+/// Returns `None` if the JSON is unreadable or the field is missing/zero.
+fn parse_cpu_cores(stdout: &[u8]) -> Option<u32> {
+    let value: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    let cpus = value.get("host")?.get("cpus")?.as_u64()?;
+    u32::try_from(cpus).ok().filter(|&count| count > 0)
+}
+
+/// Logical CPU count on the host machine.
+fn host_cpu_cores() -> Option<u32> {
+    std::thread::available_parallelism()
+        .ok()
+        .and_then(|count| u32::try_from(count.get()).ok())
+        .filter(|&count| count > 0)
+}
+
 fn command_label(bin: &Path, args: &[&str]) -> String {
     let name = bin
         .file_name()
@@ -760,16 +798,29 @@ mod tests {
         );
         let healthy = write_script_podman(
             &healthy_dir,
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 5.4.1'; exit 0; fi\necho '{\"host\":{}}'\nexit 0\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'podman version 5.4.1'; exit 0; fi\necho '{\"host\":{\"cpus\":6}}'\nexit 0\n",
         );
 
         let (selected, report) = detect_from_candidates(&[broken, healthy.clone()]).await;
         assert_eq!(selected, Some(healthy));
         assert_eq!(report.state, RuntimeState::Ready);
         assert_eq!(report.version.as_deref(), Some("5.4.1"));
+        assert_eq!(report.cpu_cores, Some(6));
+        assert!(report.host_cpu_cores.is_some());
 
         let _ = std::fs::remove_dir_all(&broken_dir);
         let _ = std::fs::remove_dir_all(&healthy_dir);
+    }
+
+    #[test]
+    fn parse_cpu_cores_extracts_positive_host_cpus() {
+        assert_eq!(parse_cpu_cores(br#"{"host":{"cpus":9}}"#), Some(9));
+        assert_eq!(parse_cpu_cores(br#"{"host":{"cpus":1}}"#), Some(1));
+        assert_eq!(parse_cpu_cores(br#"{"host":{"cpus":0}}"#), None);
+        assert_eq!(parse_cpu_cores(br#"{"host":{"cpus":-2}}"#), None);
+        assert_eq!(parse_cpu_cores(br#"{"host":{"cpus":"4"}}"#), None);
+        assert_eq!(parse_cpu_cores(br#"{"host":{}}"#), None);
+        assert_eq!(parse_cpu_cores(b"not json"), None);
     }
 
     #[tokio::test]

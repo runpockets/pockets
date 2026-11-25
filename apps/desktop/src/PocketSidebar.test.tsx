@@ -866,6 +866,67 @@ describe("PocketSidebar footer meters", () => {
     });
     expect(invokeMock).toHaveBeenCalledTimes(1);
   });
+
+  it("attaches a CPU tooltip explaining the per-core scale when core counts are unknown", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    asTauri();
+    invokeMock.mockImplementation(async () =>
+      resourceSnapshotFixture({ cpuPercent: 30, memoryBytes: null }),
+    );
+    const { container } = renderSidebar(makeCatalog());
+    await settle();
+
+    const meter = container.querySelector(".pocket-sidebar-meter-cpu")!;
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(meter.getAttribute("tabindex")).toBe("0");
+    expect(meter.getAttribute("aria-describedby")).toBe(tooltip.id);
+    expect(tooltip.textContent).toContain(
+      "Percentage of 1 core (100% = 1 full core).",
+    );
+    expect(tooltip.textContent).toContain(
+      "Multi-core workloads can exceed 100%.",
+    );
+  });
+
+  it("shows Podman and host core counts in the CPU tooltip when Podman uses a subset of host cores", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    asTauri();
+    invokeMock.mockImplementation(async () =>
+      resourceSnapshotFixture({ cpuPercent: 30, memoryBytes: null }),
+    );
+    renderSidebar(makeCatalog(), { cpuCores: 9, hostCpuCores: 18 });
+    await settle();
+
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(tooltip.textContent).toContain(
+      "Percentage of 1 core (100% = 1 full core).",
+    );
+    expect(tooltip.textContent).toContain(
+      "Podman is allocated 9 of 18 host cores (3.3% of Podman, 1.7% of host).",
+    );
+  });
+
+  it("shows Podman core count when Podman has all host cores or host count is absent", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    asTauri();
+    invokeMock.mockImplementation(async () =>
+      resourceSnapshotFixture({ cpuPercent: 30, memoryBytes: null }),
+    );
+    renderSidebar(makeCatalog(), { cpuCores: 6, hostCpuCores: 6 });
+    await settle();
+
+    const tooltip = screen.getByRole("tooltip", { hidden: true });
+    expect(tooltip.textContent).toContain(
+      "6 cores available to Podman (5% of total).",
+    );
+
+    cleanup();
+    renderSidebar(makeCatalog(), { cpuCores: 1, hostCpuCores: 1 });
+    await settle();
+    expect(
+      screen.getByRole("tooltip", { hidden: true }).textContent,
+    ).toContain("1 core available to Podman.");
+  });
 });
 
 describe("PocketSidebar footer host row", () => {

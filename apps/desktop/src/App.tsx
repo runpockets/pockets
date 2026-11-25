@@ -70,6 +70,8 @@ interface DetectionReport {
   state: "missing" | "unavailable" | "ready";
   message: string;
   version: string | null;
+  cpuCores?: number | null;
+  hostCpuCores?: number | null;
 }
 
 /**
@@ -881,6 +883,17 @@ export default function App() {
                     onToggleCollapsed={toggleSidebar}
                     hostLabel="pockets.local"
                     runningCount={knownStatuses > 0 ? runningPockets : null}
+                    cpuCores={
+                      detection.status === "ready" &&
+                      detection.value.state === "ready"
+                        ? (detection.value.cpuCores ?? null)
+                        : null
+                    }
+                    hostCpuCores={
+                      detection.status === "ready"
+                        ? (detection.value.hostCpuCores ?? null)
+                        : null
+                    }
                     themeMode={themeMode}
                     onChangeThemeMode={changeThemeMode}
                     onResourceSnapshot={applyResourceSnapshot}

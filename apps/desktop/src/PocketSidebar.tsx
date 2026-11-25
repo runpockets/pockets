@@ -48,6 +48,12 @@ export interface PocketSidebarProps {
   /** Trustworthy running-pocket count moved here from App unchanged; `null`
    *  when no lifecycle status is known, and the footer shows the host alone. */
   runningCount: number | null;
+  /** Number of virtual CPU cores available to Podman (from `detect_runtime`),
+   *  used to contextualize the sidebar CPU percentage tooltip. */
+  cpuCores?: number | null;
+  /** Logical CPU count on the host computer (from `detect_runtime`), used
+   *  alongside `cpuCores` when Podman runs in a VM with fewer cores. */
+  hostCpuCores?: number | null;
   /** Optional theme mode control surfaced in the sidebar footer so appearance
    *  is reachable without leaving the workspace. */
   themeMode?: ThemeMode;
@@ -144,6 +150,55 @@ function usableValue(value: number | null | undefined): number | null {
     : null;
 }
 
+/** Positive integer core count, or `null` when unknown/unusable. */
+function usableCoreCount(value: number | null | undefined): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1
+    ? value
+    : null;
+}
+
+/**
+ * Plain-language tooltip explaining Podman's per-core CPU scale (100% = 1 core)
+ * and, when known, how many cores Podman (and the host) have available.
+ */
+function cpuTooltipCopy(
+  cpu: number,
+  podmanCores: number | null,
+  hostCores: number | null,
+): { scale: string; capacity: string } {
+  const scale = "Percentage of 1 core (100% = 1 full core).";
+  if (podmanCores !== null && hostCores !== null && podmanCores < hostCores) {
+    return {
+      scale,
+      capacity: `Podman is allocated ${podmanCores} of ${hostCores} host cores (${formatPercent(cpu / podmanCores)} of Podman, ${formatPercent(cpu / hostCores)} of host).`,
+    };
+  }
+  if (podmanCores !== null) {
+    return {
+      scale,
+      capacity:
+        podmanCores === 1
+          ? "1 core available to Podman."
+          : `${podmanCores} cores available to Podman (${formatPercent(cpu / podmanCores)} of total).`,
+    };
+  }
+  if (hostCores !== null) {
+    return {
+      scale,
+      capacity:
+        hostCores === 1
+          ? "1 core on this computer."
+          : `${hostCores} cores on this computer.`,
+    };
+  }
+  return {
+    scale,
+    capacity: "Multi-core workloads can exceed 100%.",
+  };
+}
+
 /** The CPU bar's fill: the real percentage, clamped to the bar's geometry
     — a multi-core total prints its number, the track only holds 100%. */
 function barWidth(value: number): number {
@@ -184,6 +239,8 @@ export default function PocketSidebar({
   onToggleCollapsed,
   hostLabel,
   runningCount,
+  cpuCores,
+  hostCpuCores,
   themeMode,
   onChangeThemeMode,
   onResourceSnapshot,
@@ -266,6 +323,10 @@ export default function PocketSidebar({
 
   const cpu = usableValue(totals?.cpuPercent);
   const memory = usableValue(totals?.memoryBytes);
+  const podmanCores = usableCoreCount(cpuCores);
+  const hostCores = usableCoreCount(hostCpuCores);
+  const cpuTooltip =
+    cpu !== null ? cpuTooltipCopy(cpu, podmanCores, hostCores) : null;
 
   // Section-row counts (v3 §3.1): a plain tally of the persisted `phase`
   // over the same catalog the list renders — two honest numbers from the
@@ -499,8 +560,12 @@ export default function PocketSidebar({
 
         {inTauri && (cpu !== null || memory !== null) && (
           <div className="pocket-sidebar-meters">
-            {cpu !== null && (
-              <div className="pocket-sidebar-meter">
+            {cpu !== null && cpuTooltip !== null && (
+              <div
+                className="pocket-sidebar-meter pocket-sidebar-meter-cpu"
+                tabIndex={0}
+                aria-describedby="pocket-sidebar-cpu-tooltip"
+              >
                 <div className="pocket-sidebar-meter-row">
                   <span className="pocket-sidebar-meter-label">CPU</span>
                   <span className="pocket-sidebar-meter-value">
@@ -512,6 +577,16 @@ export default function PocketSidebar({
                     className="pocket-sidebar-meter-fill"
                     style={{ width: `${barWidth(cpu)}%` }}
                   />
+                </div>
+                <div
+                  id="pocket-sidebar-cpu-tooltip"
+                  role="tooltip"
+                  className="pocket-sidebar-tooltip"
+                >
+                  <span>{cpuTooltip.scale}</span>
+                  <span className="pocket-sidebar-tooltip-detail">
+                    {cpuTooltip.capacity}
+                  </span>
                 </div>
               </div>
             )}
