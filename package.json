@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "pocket": "node packages/pocket-tools/src/cli.js",
+    "dev": "node scripts/dev.mjs",
     "dev:web": "npm run dev:web --workspace @pockets/desktop",
     "dev:daemon": "cargo run -p pockets-cli -- serve --dev-origin http://localhost:1420",
     "build:web": "npm run build:web --workspace @pockets/desktop",
