@@ -37,6 +37,25 @@ pub struct Manifest {
     pub storage: Storage,
     #[serde(rename = "previewApis", default, skip_serializing_if = "Vec::is_empty")]
     pub preview_apis: Vec<PreviewApi>,
+    #[serde(
+        rename = "runtimeVariables",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub runtime_variables: Vec<RuntimeVariable>,
+}
+
+/// Source-controlled declaration of an environment variable accepted by the
+/// Pocket. Values never appear in the manifest; Pockets stores them locally per
+/// environment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeVariable {
+    pub name: String,
+    pub kind: crate::runtime_settings::VariableKind,
+    pub purpose: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub required: bool,
 }
 
 /// Source-controlled declaration. Desktop checks its separate per-folder
@@ -72,6 +91,26 @@ pub(crate) fn validate_preview_host(host: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn is_hidden_display_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}' | '\u{200e}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        )
+}
+
+fn validate_display_line(field: &str, value: &str, limit: usize) -> Result<(), String> {
+    if value.trim().is_empty()
+        || value.chars().count() > limit
+        || value.chars().any(is_hidden_display_char)
+    {
+        return Err(format!(
+            "{field} must be a single line of up to {limit} characters."
+        ));
+    }
+    Ok(())
+}
+
 fn validate_preview_apis(apis: &[PreviewApi]) -> Result<(), String> {
     if apis.len() > MAX_PREVIEW_APIS {
         return Err(format!(
@@ -85,18 +124,25 @@ fn validate_preview_apis(apis: &[PreviewApi]) -> Result<(), String> {
         if !hosts.insert(&api.host) {
             return Err("Each previewApis hostname must appear only once.".into());
         }
-        for (field, value, limit) in [("name", &api.name, 80), ("purpose", &api.purpose, 240)] {
-            let hidden = |c: char| {
-                c.is_control()
-                    || matches!(c, '\u{061c}' | '\u{200e}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
-            };
-            if value.trim().is_empty() || value.chars().count() > limit || value.chars().any(hidden)
-            {
-                return Err(format!(
-                    "previewApis.{field} must be a single line of up to {limit} characters."
-                ));
-            }
+        validate_display_line("previewApis.name", &api.name, 80)?;
+        validate_display_line("previewApis.purpose", &api.purpose, 240)?;
+    }
+    Ok(())
+}
+
+fn validate_runtime_variables(variables: &[RuntimeVariable]) -> Result<(), String> {
+    let max = crate::runtime_settings::MAX_VARIABLES;
+    if variables.len() > max {
+        return Err(format!("runtimeVariables supports up to {max} variables."));
+    }
+    let mut names = BTreeSet::new();
+    for variable in variables {
+        crate::runtime_settings::validate_name(&variable.name)
+            .map_err(|error| format!("Invalid runtimeVariables.name. {error}"))?;
+        if !names.insert(&variable.name) {
+            return Err("Each runtimeVariables name must appear only once.".into());
         }
+        validate_display_line("runtimeVariables.purpose", &variable.purpose, 240)?;
     }
     Ok(())
 }
@@ -210,6 +256,7 @@ impl Manifest {
         validate_id("storage.name", &self.storage.name)?;
         validate_storage_path("storage.path", &self.storage.path)?;
         validate_preview_apis(&self.preview_apis)?;
+        validate_runtime_variables(&self.runtime_variables)?;
 
         Ok(())
     }
@@ -415,6 +462,38 @@ mod tests {
             assert_ne!(mutated, BUNDLED_MANIFEST, "mutation must apply: {from}");
             let result = parse_manifest(&mutated);
             assert!(result.is_err(), "must be rejected {to:?}, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn runtime_variables_manifest_validation() {
+        let valid = format!(
+            "{BUNDLED_MANIFEST}\nruntimeVariables:\n  - name: PRICING_API_KEY\n    kind: secret\n    required: true\n    purpose: Authenticates market data lookups.\n  - name: CURRENCY\n    kind: plain\n    purpose: Default display currency.\n"
+        );
+        let parsed = parse_manifest(&valid).expect("valid runtimeVariables must parse");
+        assert_eq!(parsed.runtime_variables.len(), 2);
+        assert_eq!(parsed.runtime_variables[0].name, "PRICING_API_KEY");
+        assert!(parsed.runtime_variables[0].required);
+        assert_eq!(parsed.runtime_variables[1].name, "CURRENCY");
+        assert!(!parsed.runtime_variables[1].required);
+
+        let single = "  - name: PRICING_API_KEY\n    kind: secret\n    purpose: Authenticates market data lookups.\n";
+        for invalid in [
+            format!("{single}{single}"),
+            single.replace("PRICING_API_KEY", "HOST"),
+            single.replace("PRICING_API_KEY", "PORT"),
+            single.replace("PRICING_API_KEY", "DATA_DIR"),
+            single.replace("PRICING_API_KEY", "POCKETS_HTTPS_GATEWAY"),
+            single.replace("PRICING_API_KEY", "BAD-NAME"),
+            single.replace("kind: secret", "kind: token"),
+            format!("{single}    value: leaked\n"),
+            single.replace("Authenticates market data lookups.", "\"Line 1\\nLine 2\""),
+        ] {
+            let doc = format!("{BUNDLED_MANIFEST}\nruntimeVariables:\n{invalid}");
+            assert!(
+                parse_manifest(&doc).is_err(),
+                "expected invalid runtimeVariables to be rejected:\n{invalid}"
+            );
         }
     }
 }

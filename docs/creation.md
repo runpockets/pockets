@@ -39,9 +39,13 @@ the error gives their location so you can review and Link project to recover.
 ## Runtime variables
 
 Open **Runtime variables** for a saved Pocket and choose **Preview** or
-**Installed app**. Add plain configuration such as `CURRENCY` or a secret such
-as `PRICING_API_KEY`. A saved secret shows its name and can be replaced or
-removed. Its value stays in macOS Keychain after saving.
+**Installed app**. Variables declared under `runtimeVariables` in `pocket.yaml`
+appear automatically with their purpose, required status, and secret/plain type
+pre-selected. Any undeclared `process.env` reads detected in the Pocket's source
+also appear as one-click suggestions, and you can still add plain configuration
+such as `CURRENCY` or a secret such as `PRICING_API_KEY` manually. A saved
+secret shows its name and can be replaced or removed. Values stay out of
+`pocket.yaml` and source snapshots in Pockets' owner-only host vault.
 
 Start Preview to let the preview code read its values as environment variables.
 Opening a stopped installed app applies its Installed app values. Restart the

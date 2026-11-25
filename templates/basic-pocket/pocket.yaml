@@ -14,3 +14,10 @@ web:
 storage:
   name: data
   path: /data
+# Optional: declare runtime environment variables accepted by this Pocket.
+# Values are never placed here; Pockets stores them locally per environment.
+# runtimeVariables:
+#   - name: PRICING_API_KEY
+#     kind: secret # secret | plain
+#     required: true
+#     purpose: Authenticates quote lookups with the market data provider.

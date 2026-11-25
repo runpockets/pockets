@@ -108,6 +108,38 @@
         }
       }
     },
+    "runtimeVariables": {
+      "type": "array",
+      "description": "Runtime environment variables accepted by the Pocket. Values are never stored in the manifest; Pockets stores them locally per environment.",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Environment variable name. Up to 128 ASCII letters, digits, or underscores, starting with a letter or underscore. Reserved names (HOST, PORT, DATA_DIR, POCKETS_*) are prohibited.",
+            "maxLength": 128,
+            "pattern": "^(?!(?:HOST|PORT|DATA_DIR)(?![\\s\\S]))(?!POCKETS_)[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Whether Pockets should store and treat this variable as a write-only secret or plain text configuration.",
+            "enum": ["secret", "plain"]
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 240,
+            "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e-\\u200f\\u2028-\\u202e\\u2066-\\u2069]+(?![\\s\\S])"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the Pocket requires this variable to operate normally."
+          }
+        }
+      }
+    },
     "storage": {
       "type": "object",
       "required": ["name", "path"],

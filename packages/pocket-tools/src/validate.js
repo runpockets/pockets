@@ -218,6 +218,13 @@ export async function validateManifestFile(filePath) {
     result.errors.push("Each previewApis hostname must appear only once.");
     return result;
   }
+  const runtimeVarNames = (value.runtimeVariables ?? []).map(
+    ({ name }) => name,
+  );
+  if (new Set(runtimeVarNames).size !== runtimeVarNames.length) {
+    result.errors.push("Each runtimeVariables name must appear only once.");
+    return result;
+  }
 
   result.ok = true;
   result.data = value;

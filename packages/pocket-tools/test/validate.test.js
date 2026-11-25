@@ -111,3 +111,51 @@ test("preview API declarations require distinct lowercase public hosts and displ
     assert.equal((await validateManifestFile(path)).ok, false);
   }
 });
+
+test("runtimeVariables declarations require distinct valid names, kind, and purpose", async (t) => {
+  const base = await readFile(
+    new URL("../../../examples/hello-pocket/pocket.yaml", import.meta.url),
+    "utf8",
+  );
+  const decl =
+    "  - name: PRICING_API_KEY\n    kind: secret\n    required: true\n    purpose: Authenticates market data lookups.\n  - name: CURRENCY\n    kind: plain\n    purpose: Default display currency.\n";
+  const path = await makeTempFile(
+    t,
+    "runtime-vars.yaml",
+    `${base}\nruntimeVariables:\n${decl}`,
+  );
+  const parsed = await validateManifestFile(path);
+  assert.equal(parsed.ok, true, `errors: ${JSON.stringify(parsed.errors)}`);
+  assert.deepEqual(parsed.data.runtimeVariables, [
+    {
+      name: "PRICING_API_KEY",
+      kind: "secret",
+      required: true,
+      purpose: "Authenticates market data lookups.",
+    },
+    {
+      name: "CURRENCY",
+      kind: "plain",
+      purpose: "Default display currency.",
+    },
+  ]);
+
+  const single =
+    "  - name: PRICING_API_KEY\n    kind: secret\n    purpose: Authenticates market data lookups.\n";
+  for (const invalid of [
+    single + single,
+    single.replace("PRICING_API_KEY", "PORT"),
+    single.replace("PRICING_API_KEY", "POCKETS_SECRET"),
+    single.replace("PRICING_API_KEY", "BAD-NAME"),
+    single.replace("kind: secret", "kind: password"),
+    single.replace("    purpose: Authenticates market data lookups.\n", ""),
+    `${single}    value: never-allowed\n`,
+  ]) {
+    await writeFile(path, `${base}\nruntimeVariables:\n${invalid}`);
+    assert.equal(
+      (await validateManifestFile(path)).ok,
+      false,
+      `expected rejection for:\n${invalid}`,
+    );
+  }
+});

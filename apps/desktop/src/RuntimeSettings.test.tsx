@@ -17,23 +17,30 @@ afterEach(() => {
   invokeMock.mockReset();
 });
 
+function openSection() {
+  const details = screen.getByText("Runtime variables").closest("details")!;
+  details.open = true;
+  fireEvent(details, new Event("toggle"));
+  return details;
+}
+
 it("keeps secrets write-only and loads each environment on demand", async () => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "project_runtime_settings") {
       return args && "environment" in args && args.environment === "preview"
-        ? [{ name: "PRICING_API_KEY", kind: "secret" }]
-        : [{ name: "CURRENCY", kind: "plain", value: "NZD" }];
+        ? { variables: [{ name: "PRICING_API_KEY", kind: "secret" }] }
+        : {
+            variables: [{ name: "CURRENCY", kind: "plain", value: "NZD" }],
+          };
     }
     if (command === "change_project_runtime_settings")
-      return [{ name: "PRICING_API_KEY", kind: "secret" }];
+      return { variables: [{ name: "PRICING_API_KEY", kind: "secret" }] };
     throw new Error(`Unexpected command ${command}`);
   });
 
   render(<RuntimeSettings projectId="sample-project" disabled={false} />);
   expect(invokeMock).not.toHaveBeenCalled();
-  const details = screen.getByText("Runtime variables").closest("details")!;
-  details.open = true;
-  fireEvent(details, new Event("toggle"));
+  openSection();
 
   fireEvent.click(
     await screen.findByRole("button", { name: "Replace PRICING_API_KEY" }),
@@ -69,4 +76,118 @@ it("keeps secrets write-only and loads each environment on demand", async () => 
     id: "sample-project",
     environment: "installed",
   });
+});
+
+it("renders declared variables with purpose/type and prefills detected source variables", async () => {
+  const declared = [
+    {
+      name: "PRICING_API_KEY",
+      kind: "secret" as const,
+      required: true,
+      purpose: "Authenticates market data lookups.",
+    },
+    {
+      name: "CURRENCY",
+      kind: "plain" as const,
+      required: false,
+      purpose: "Default display currency.",
+    },
+  ];
+  let saved: Array<
+    | { name: string; kind: "plain"; value: string }
+    | { name: string; kind: "secret" }
+  > = [];
+
+  invokeMock.mockImplementation(async (command, args) => {
+    if (command === "project_runtime_settings") {
+      return {
+        variables: saved,
+        declared,
+        detected: ["EXTRA_FLAG"],
+      };
+    }
+    if (command === "change_project_runtime_settings") {
+      const change = (
+        args as {
+          change:
+            | {
+                action: "set";
+                name: string;
+                kind: "plain" | "secret";
+                value: string;
+              }
+            | { action: "remove"; name: string };
+        }
+      ).change;
+      if (change.action === "set") {
+        saved = [
+          ...saved.filter((item) => item.name !== change.name),
+          change.kind === "plain"
+            ? { name: change.name, kind: "plain", value: change.value }
+            : { name: change.name, kind: "secret" },
+        ];
+      } else {
+        saved = saved.filter((item) => item.name !== change.name);
+      }
+      return {
+        variables: saved,
+        declared,
+        detected: ["EXTRA_FLAG"],
+      };
+    }
+    throw new Error(`Unexpected command ${command}`);
+  });
+
+  render(<RuntimeSettings projectId="sample-project" disabled={false} />);
+  openSection();
+
+  expect(
+    await screen.findByText("Authenticates market data lookups."),
+  ).toBeTruthy();
+  expect(screen.getByText("1 required")).toBeTruthy();
+  expect(screen.getByText("0 saved")).toBeTruthy();
+
+  // Clicking Set on an optional plain declared variable locks its name and
+  // selects Plain text automatically.
+  fireEvent.click(screen.getByRole("button", { name: "Set CURRENCY" }));
+  const nameInput = screen.getByLabelText<HTMLInputElement>("Variable name");
+  expect(nameInput.value).toBe("CURRENCY");
+  expect(nameInput.readOnly).toBe(true);
+  const plainInput = screen.getByLabelText<HTMLInputElement>("Value");
+  expect(plainInput.type).toBe("text");
+  fireEvent.change(plainInput, { target: { value: "NZD" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save variable" }));
+
+  expect(await screen.findByText("NZD")).toBeTruthy();
+  expect(invokeMock).toHaveBeenCalledWith("change_project_runtime_settings", {
+    id: "sample-project",
+    environment: "preview",
+    change: {
+      action: "set",
+      name: "CURRENCY",
+      kind: "plain",
+      value: "NZD",
+      replace: false,
+    },
+  });
+
+  // Clicking a detected variable prefills the editable Variable name field and
+  // removes it from suggestions once saved.
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use detected variable EXTRA_FLAG" }),
+  );
+  const prefilled = screen.getByLabelText<HTMLInputElement>("Variable name");
+  expect(prefilled.value).toBe("EXTRA_FLAG");
+  expect(prefilled.readOnly).toBe(false);
+  const secretInput = screen.getByLabelText<HTMLInputElement>("Secret value");
+  fireEvent.change(secretInput, { target: { value: "flag-secret" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add variable" }));
+
+  expect(
+    await screen.findByRole("button", { name: "Replace EXTRA_FLAG" }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Use detected variable EXTRA_FLAG" }),
+  ).toBeNull();
+  expect(screen.getByText("Added manually")).toBeTruthy();
 });

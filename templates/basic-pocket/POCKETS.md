@@ -26,9 +26,12 @@ separate project or edit Pockets' managed snapshots.
   or HEAD to `/fetch` on that URL with the full provider HTTPS URL in the `url`
   query parameter. The installed app uses the normal provider URL. Handle
   loading, stale data, and failures, and label samples.
-- Read app settings from environment variables. Ask the user to configure
-  their values in Pockets and start Preview there. Keep credentials out of
-  source, browser responses, and logs.
+- Read app settings from environment variables and declare each accepted
+  variable under `runtimeVariables` in `pocket.yaml` with `name`, `kind`
+  (`secret` or `plain`), `purpose`, and optional `required: true` so Pockets
+  surfaces them automatically in **Runtime variables**. Ask the user to
+  configure their values in Pockets and start Preview there. Keep credentials
+  out of `pocket.yaml`, source, browser responses, and logs.
 - Source snapshots exclude secrets, Git metadata, local `data/`, caches and
   `node_modules`. Do not depend on excluded files in preview or installation.
 

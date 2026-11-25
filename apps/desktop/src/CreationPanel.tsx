@@ -28,6 +28,13 @@ export interface PreviewApi {
   purpose: string;
 }
 
+export interface RuntimeVariable {
+  name: string;
+  kind: "plain" | "secret";
+  purpose: string;
+  required?: boolean;
+}
+
 /** Manifest embedded in a persisted project record. */
 export interface ProjectManifest {
   metadata: {
@@ -49,6 +56,7 @@ export interface ProjectManifest {
     path: string;
   };
   previewApis?: PreviewApi[];
+  runtimeVariables?: RuntimeVariable[];
 }
 
 /**
