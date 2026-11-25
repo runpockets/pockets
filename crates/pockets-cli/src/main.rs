@@ -643,10 +643,17 @@ async fn run_serve(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
 
     let (tx, rx) = tokio::sync::oneshot::channel::<server::DaemonReady>();
     let print_token = token.clone();
+    let print_dev_origin = flags.dev_origin.clone();
     let no_bootstrap = flags.no_bootstrap;
     tokio::spawn(async move {
         if let Ok(ready) = rx.await {
             println!("Pockets daemon listening on http://127.0.0.1:{}", ready.port);
+            if let Some(dev) = print_dev_origin.as_deref() {
+                println!(
+                    "Dev dashboard URL: {}",
+                    server::bootstrap_url_for(dev, &print_token)
+                );
+            }
             println!(
                 "Local dashboard URL: {}",
                 server::bootstrap_url(ready.port, &print_token)

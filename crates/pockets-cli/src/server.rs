@@ -576,8 +576,19 @@ fn is_loopback_host(host: &str, port: u16) -> bool {
     expected.iter().any(|candidate| candidate == &lower)
 }
 
-fn allowed_host(host: &str, port: u16, extra: &[TrustedOrigin]) -> bool {
-    if is_loopback_host(host, port) {
+fn is_dev_host(host: &str, dev_origin: Option<&str>) -> bool {
+    let Some(dev) = dev_origin else {
+        return false;
+    };
+    let Ok(trusted) = parse_trusted_origin(dev) else {
+        return false;
+    };
+    let lower = host.trim().to_ascii_lowercase();
+    trusted.hosts.iter().any(|candidate| candidate == &lower)
+}
+
+fn allowed_host(host: &str, port: u16, dev_origin: Option<&str>, extra: &[TrustedOrigin]) -> bool {
+    if is_loopback_host(host, port) || is_dev_host(host, dev_origin) {
         return true;
     }
     let lower = host.trim().to_ascii_lowercase();
@@ -705,13 +716,14 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
             json!({ "error": "Refused request with disallowed Host header." }),
         );
     };
-    if !allowed_host(host, state.port, &extra_origins) {
+    if !allowed_host(host, state.port, state.dev_origin.as_deref(), &extra_origins) {
         return json_response(
             StatusCode::FORBIDDEN,
             json!({ "error": "Refused request with disallowed Host header." }),
         );
     }
-    let remote_client = !is_loopback_host(host, state.port);
+    let remote_client =
+        !is_loopback_host(host, state.port) && !is_dev_host(host, state.dev_origin.as_deref());
     let secure_cookie = is_https_request(req.headers(), host, &extra_origins);
 
     let method = req.method().clone();
@@ -1106,21 +1118,38 @@ mod tests {
     #[test]
     fn host_guard_allows_loopback_and_explicit_trusted_origins_only() {
         let none: Vec<TrustedOrigin> = Vec::new();
-        assert!(allowed_host("pockets.localhost:18786", 18786, &none));
-        assert!(allowed_host("127.0.0.1:18786", 18786, &none));
-        assert!(allowed_host("localhost:18786", 18786, &none));
-        assert!(!allowed_host("evil.com:18786", 18786, &none));
-        assert!(!allowed_host("notes.localhost:18786", 18786, &none));
-        assert!(!allowed_host("pockets.localhost:18788", 18786, &none));
+        assert!(allowed_host("pockets.localhost:18786", 18786, None, &none));
+        assert!(allowed_host("127.0.0.1:18786", 18786, None, &none));
+        assert!(allowed_host("localhost:18786", 18786, None, &none));
+        assert!(!allowed_host("evil.com:18786", 18786, None, &none));
+        assert!(!allowed_host("notes.localhost:18786", 18786, None, &none));
+        assert!(!allowed_host("pockets.localhost:18788", 18786, None, &none));
+        assert!(!allowed_host("localhost:1420", 18786, None, &none));
+        assert!(allowed_host(
+            "localhost:1420",
+            18786,
+            Some("http://localhost:1420"),
+            &none
+        ));
 
         let ts = parse_trusted_origin("https://cloud-vm.tail1234.ts.net:18786").unwrap();
         let custom = parse_trusted_origin("https://pockets.example.com/").unwrap();
         let extra = vec![ts, custom];
-        assert!(allowed_host("cloud-vm.tail1234.ts.net:18786", 18786, &extra));
-        assert!(!allowed_host("cloud-vm.tail1234.ts.net:18788", 18786, &extra));
-        assert!(allowed_host("pockets.example.com", 18786, &extra));
-        assert!(allowed_host("pockets.example.com:443", 18786, &extra));
-        assert!(!allowed_host("other.example.com", 18786, &extra));
+        assert!(allowed_host(
+            "cloud-vm.tail1234.ts.net:18786",
+            18786,
+            None,
+            &extra
+        ));
+        assert!(!allowed_host(
+            "cloud-vm.tail1234.ts.net:18788",
+            18786,
+            None,
+            &extra
+        ));
+        assert!(allowed_host("pockets.example.com", 18786, None, &extra));
+        assert!(allowed_host("pockets.example.com:443", 18786, None, &extra));
+        assert!(!allowed_host("other.example.com", 18786, None, &extra));
     }
 
     #[test]
