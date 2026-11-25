@@ -108,14 +108,25 @@ pub fn browse_directory(
             .ok_or_else(|| "Could not determine the user home directory.".to_owned())?,
     };
 
-    let canonical = std::fs::canonicalize(&target)
-        .map_err(|err| format!("Folder '{}' could not be opened: {err}", target.display()))?;
+    let canonical = std::fs::canonicalize(&target).map_err(|err| {
+        format!(
+            "Folder '{}' could not be opened: {err}",
+            abbreviate_home_dir(&target)
+        )
+    })?;
     if !canonical.is_dir() {
-        return Err(format!("'{}' is not a folder.", canonical.display()));
+        return Err(format!(
+            "'{}' is not a folder.",
+            abbreviate_home_dir(&canonical)
+        ));
     }
 
-    let read_dir = std::fs::read_dir(&canonical)
-        .map_err(|err| format!("Could not read '{}': {err}", canonical.display()))?;
+    let read_dir = std::fs::read_dir(&canonical).map_err(|err| {
+        format!(
+            "Could not read '{}': {err}",
+            abbreviate_home_dir(&canonical)
+        )
+    })?;
 
     let mut entries = Vec::new();
     let mut truncated = false;
@@ -138,7 +149,7 @@ pub fn browse_directory(
         let has_pocket_yaml = entry_path.join("pocket.yaml").is_file();
         entries.push(DirectoryEntry {
             name,
-            path: entry_path.to_string_lossy().into_owned(),
+            path: abbreviate_home_dir(&entry_path),
             has_pocket_yaml,
         });
     }
@@ -157,10 +168,10 @@ pub fn browse_directory(
     let parent_path = canonical
         .parent()
         .filter(|parent| *parent != canonical.as_path())
-        .map(|parent| parent.to_string_lossy().into_owned());
+        .map(abbreviate_home_dir);
 
     Ok(DirectoryListing {
-        current_path: canonical.to_string_lossy().into_owned(),
+        current_path: abbreviate_home_dir(&canonical),
         parent_path,
         has_pocket_yaml: Path::new(&canonical).join("pocket.yaml").is_file(),
         entries,
@@ -168,7 +179,39 @@ pub fn browse_directory(
     })
 }
 
-fn expand_tilde(raw: &str) -> PathBuf {
+/// Formats `path` for user-facing display by replacing the current user's home
+/// directory prefix with `~`.
+pub fn abbreviate_home_dir(path: &Path) -> String {
+    let Some(home) = user_home_dir() else {
+        return path.to_string_lossy().into_owned();
+    };
+    if let Some(abbreviated) = abbreviate_home_dir_with(path, &home) {
+        return abbreviated;
+    }
+    if let Ok(canonical_home) = std::fs::canonicalize(&home) {
+        if canonical_home != home {
+            if let Some(abbreviated) = abbreviate_home_dir_with(path, &canonical_home) {
+                return abbreviated;
+            }
+        }
+    }
+    path.to_string_lossy().into_owned()
+}
+
+fn abbreviate_home_dir_with(path: &Path, home: &Path) -> Option<String> {
+    let rest = path.strip_prefix(home).ok()?;
+    if rest.as_os_str().is_empty() {
+        Some("~".to_owned())
+    } else {
+        Some(format!(
+            "~{}{}",
+            std::path::MAIN_SEPARATOR,
+            rest.to_string_lossy()
+        ))
+    }
+}
+
+pub fn expand_tilde(raw: &str) -> PathBuf {
     if raw == "~" {
         if let Some(home) = user_home_dir() {
             return home;
@@ -207,5 +250,44 @@ mod tests {
 
         let with_hidden = browse_directory(Some(temp.path().to_str().unwrap()), true).unwrap();
         assert_eq!(with_hidden.entries.len(), 3);
+    }
+
+    #[test]
+    fn abbreviates_paths_under_home_directory_without_partial_prefix_matches() {
+        let home = PathBuf::from("/Users/alice");
+        let sep = std::path::MAIN_SEPARATOR;
+
+        assert_eq!(abbreviate_home_dir_with(&home, &home), Some("~".to_owned()));
+        assert_eq!(
+            abbreviate_home_dir_with(&home.join("Code").join("Pockets").join("app"), &home),
+            Some(format!("~{sep}Code{sep}Pockets{sep}app"))
+        );
+        // Sibling directory sharing the same string prefix must not match.
+        assert_eq!(
+            abbreviate_home_dir_with(Path::new("/Users/alice2/Code/Pockets"), &home),
+            None
+        );
+        // Path outside home must not match.
+        assert_eq!(
+            abbreviate_home_dir_with(Path::new("/Users/Shared/Code/Pockets"), &home),
+            None
+        );
+        assert_eq!(
+            abbreviate_home_dir_with(Path::new("/projects/tracker"), &home),
+            None
+        );
+    }
+
+    #[test]
+    fn abbreviate_and_expand_roundtrip_under_real_home() {
+        let Some(home) = user_home_dir() else {
+            return;
+        };
+        let nested = home.join("Code").join("Pockets").join("demo");
+        let abbreviated = abbreviate_home_dir(&nested);
+        assert!(abbreviated.starts_with('~'));
+        assert_eq!(expand_tilde(&abbreviated), nested);
+        assert_eq!(abbreviate_home_dir(&home), "~");
+        assert_eq!(expand_tilde("~"), home);
     }
 }

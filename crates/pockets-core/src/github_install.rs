@@ -178,12 +178,16 @@ pub async fn add_github_pocket(
     if dest.exists() {
         return Err(format!(
             "Destination '{}' already exists and does not contain a pocket.yaml.",
-            dest.display()
+            crate::fs_browser::abbreviate_home_dir(&dest)
         ));
     }
 
-    std::fs::create_dir_all(&parent)
-        .map_err(|err| format!("Could not create '{}': {err}", parent.display()))?;
+    std::fs::create_dir_all(&parent).map_err(|err| {
+        format!(
+            "Could not create '{}': {err}",
+            crate::fs_browser::abbreviate_home_dir(&parent)
+        )
+    })?;
 
     let clone_url = repo.clone_url();
     if let Err(err) = run_git_clone(&git, &clone_url, &dest).await {

@@ -1,7 +1,5 @@
 //! JSON RPC dispatcher mapping frontend command names to `pockets-core` calls.
 
-use std::path::PathBuf;
-
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -179,7 +177,9 @@ pub async fn dispatch(
         "list_projects" => to_json(creation::list_projects(ctx).await?),
         "import_project" => {
             let args: ImportArgs = parse_args(body)?;
-            to_json(creation::import_project(ctx, PathBuf::from(args.folder_path)).await?)
+            to_json(
+                creation::import_project(ctx, fs_browser::expand_tilde(&args.folder_path)).await?,
+            )
         }
         "build_project" => {
             let args: IdArg = parse_args(body)?;
@@ -199,7 +199,7 @@ pub async fn dispatch(
             to_json(
                 development_commands::create_development_project(
                     ctx,
-                    PathBuf::from(args.parent_path),
+                    fs_browser::expand_tilde(&args.parent_path),
                     args.name,
                     args.folder_name,
                     args.brief,
@@ -213,7 +213,7 @@ pub async fn dispatch(
                 development_commands::export_development_project(
                     ctx,
                     args.id,
-                    PathBuf::from(args.parent_path),
+                    fs_browser::expand_tilde(&args.parent_path),
                 )
                 .await?,
             )
@@ -224,7 +224,7 @@ pub async fn dispatch(
                 development_commands::link_development_folder(
                     ctx,
                     args.id,
-                    PathBuf::from(args.folder_path),
+                    fs_browser::expand_tilde(&args.folder_path),
                 )
                 .await?,
             )
@@ -400,7 +400,7 @@ pub async fn dispatch(
                 github_install::add_github_pocket(
                     ctx,
                     &args.source,
-                    args.dest_parent.map(PathBuf::from),
+                    args.dest_parent.as_deref().map(fs_browser::expand_tilde),
                 )
                 .await?,
             )

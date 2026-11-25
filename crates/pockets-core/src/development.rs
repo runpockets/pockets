@@ -173,8 +173,8 @@ pub(crate) fn status(store: &Store, id: &str) -> Result<DevelopmentStatus, Strin
         linked: true,
         folder: link
             .folder
-            .as_ref()
-            .map(|folder| folder.to_string_lossy().into_owned()),
+            .as_deref()
+            .map(crate::fs_browser::abbreviate_home_dir),
         available: error.is_none(),
         error,
     })
@@ -373,7 +373,10 @@ pub(crate) fn export(store: &Store, id: &str, parent: &Path) -> Result<Project, 
             .map(|(path, bytes)| (path.as_str(), bytes.as_slice())),
     )?;
     link(store, Some(id), &destination).map_err(|error| {
-        format!("{error} The saved source is available at {}. Use Link development folder on this Pocket to retry.", destination.display())
+        format!(
+            "{error} The saved source is available at {}. Use Link development folder on this Pocket to retry.",
+            crate::fs_browser::abbreviate_home_dir(&destination)
+        )
     })
 }
 
@@ -456,12 +459,9 @@ mod tests {
         assert!(status.linked && status.available);
         assert_eq!(
             status.folder,
-            Some(
-                std::fs::canonicalize(&root)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
-            )
+            Some(crate::fs_browser::abbreviate_home_dir(
+                &std::fs::canonicalize(&root).unwrap()
+            ))
         );
         assert!(!serde_json::to_string(&first)
             .unwrap()
