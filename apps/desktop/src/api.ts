@@ -283,7 +283,11 @@ export async function invoke<T = unknown>(
     return uploadBackup<T>(String(args?.id ?? "")) as Promise<T>;
   }
 
-  if (command === "open_project" || command === "open_pocket") {
+  if (
+    command === "open_project" ||
+    command === "open_pocket" ||
+    command === "project_preview_open"
+  ) {
     const url = await rpcCall<string>(command, args);
     if (typeof url === "string" && /^https?:\/\//i.test(url)) {
       window.open(url, "_blank", "noopener,noreferrer");

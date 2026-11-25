@@ -28,6 +28,8 @@ interface PreviewStatus {
   revision: number;
   /** Loopback proxy URL, present only while ready. */
   url?: string;
+  /** Private Tailscale HTTPS preview URL when accessed from a remote host. */
+  remoteUrl?: string;
   /** Transitions with `revision > cursor`, oldest first, ring-bounded. */
   eventsSince: PreviewEvent[];
   /** Revision to pass as the next poll's cursor. */
@@ -110,6 +112,7 @@ export function useProjectPreview(projectId: string | null) {
       previous.revision === next.revision &&
       previous.state === next.state &&
       previous.url === next.url &&
+      previous.remoteUrl === next.remoteUrl &&
       previous.error === next.error &&
       previous.apiAccess?.token === next.apiAccess?.token
         ? previous

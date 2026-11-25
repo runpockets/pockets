@@ -1317,4 +1317,31 @@ describe("preview layout contract", () => {
     // Flat by contract (v2 §4): nothing in this pane is rounded.
     expect(previewCss).not.toMatch(/border-radius/);
   });
+
+  it("prefers remoteUrl over loopback url for the embedded iframe and address strip", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "project_preview_status") {
+        return {
+          ...statusFixture({
+            state: "ready",
+            revision: 1,
+            url: "http://127.0.0.1:49312",
+            nextCursor: 1,
+          }),
+          remoteUrl: "https://cloud-vm.tail00000.ts.net:49312",
+        };
+      }
+      throw new Error(`Unexpected command: ${cmd}`);
+    });
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    render(<PreviewPanel projectId={SESSION} />);
+    await settleFirstRead();
+
+    expect(
+      screen.getByText("cloud-vm.tail00000.ts.net:49312"),
+    ).toBeTruthy();
+    const iframe = screen.getByTitle("Workspace preview") as HTMLIFrameElement;
+    expect(iframe.src).toBe("https://cloud-vm.tail00000.ts.net:49312/");
+  });
 });

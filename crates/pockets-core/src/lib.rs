@@ -67,6 +67,7 @@ pub struct AppContext {
     pub previews: preview::Previews,
     pub project_previews: project_preview::ProjectPreviews,
     pub tailscale_portal: Arc<tailscale_portal::TailscalePortal>,
+    pub tailscale_preview_shares: tailscale::PreviewShares,
 }
 
 impl AppContext {
@@ -79,6 +80,7 @@ impl AppContext {
             previews: preview::Previews::default(),
             project_previews: project_preview::ProjectPreviews::default(),
             tailscale_portal: Arc::new(tailscale_portal::TailscalePortal::default()),
+            tailscale_preview_shares: tailscale::PreviewShares::default(),
         }
     }
 
@@ -212,7 +214,11 @@ pub async fn stop_pocket(ctx: &AppContext) -> Result<PocketView, String> {
     })
 }
 
-pub async fn open_pocket(ctx: &AppContext, open_host_browser: bool) -> Result<String, String> {
+pub async fn open_pocket(
+    ctx: &AppContext,
+    open_host_browser: bool,
+    prefer_remote: bool,
+) -> Result<String, String> {
     let _serializing = ctx.controller.lifecycle_guard().await;
     let bin = require_podman()?;
     let view = read_status(&bin).await?;
@@ -222,9 +228,19 @@ pub async fn open_pocket(ctx: &AppContext, open_host_browser: bool) -> Result<St
         );
     }
     let store = ctx.store();
-    let url = local_sites::Site::Bundled
-        .running_address(&store, view.status.url.as_deref())?
-        .url();
+    let address = local_sites::Site::Bundled.running_address(&store, view.status.url.as_deref())?;
+    let url = if prefer_remote {
+        tailscale::enable_port_serve(address.port).await.map_err(|err| {
+            format!(
+                "Could not open this Pocket remotely over Tailscale ({err}). \
+                 Local address on the host is {} (forward port {} over SSH if not using Tailscale).",
+                address.url(),
+                address.port
+            )
+        })?
+    } else {
+        address.url()
+    };
     if open_host_browser {
         open_in_browser(&url).await?;
     }

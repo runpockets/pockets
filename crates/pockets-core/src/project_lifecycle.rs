@@ -167,13 +167,17 @@ pub async fn stop_project(ctx: &AppContext, id: String) -> Result<PocketView, St
     Ok(view)
 }
 
-/// Resolves and validates a running Pocket's local URL, opens it in the host
+/// Resolves and validates a running Pocket's browser URL, opens it in the host
 /// browser when requested (`open_host_browser`), marks the record previewed,
-/// and returns the verified URL.
+/// and returns the verified URL. When `prefer_remote` is true (dashboard
+/// accessed from a remote host, e.g. over Tailscale), ensures a private
+/// Tailscale Serve route is active and returns its HTTPS URL instead of
+/// `*.localhost`.
 pub async fn open_project(
     ctx: &AppContext,
     id: String,
     open_host_browser: bool,
+    prefer_remote: bool,
 ) -> Result<String, String> {
     let _serializing = ctx.controller.lifecycle_guard().await;
     let store = ctx.store();
@@ -185,9 +189,52 @@ pub async fn open_project(
             "The Pocket is not reachable yet. Start it and wait until it reports ready.".to_owned(),
         );
     }
-    let url = Site::Managed(&project)
-        .running_address(&store, view.status.url.as_deref())?
-        .url();
+    let address = Site::Managed(&project).running_address(&store, view.status.url.as_deref())?;
+    let url = if prefer_remote {
+        let slug = address
+            .slug()
+            .map(str::to_owned)
+            .unwrap_or_else(|| crate::local_sites::slug_for_project(&store, &project));
+        let share = tailscale::reconcile_project_share(
+            &store,
+            &ctx.tailscale_portal,
+            &project.id,
+            &slug,
+            Some(address.port),
+        )
+        .await?;
+        if share.active {
+            share.url.unwrap_or_else(|| address.url())
+        } else {
+            let enabled = tailscale::set_enabled(
+                &store,
+                &ctx.tailscale_portal,
+                &project.id,
+                &slug,
+                true,
+                Some(address.port),
+            )
+            .await
+            .map_err(|err| {
+                format!(
+                    "Could not open this Pocket remotely over Tailscale ({err}). \
+                     On the host it is running at {} (forward port {} over SSH if not using Tailscale).",
+                    address.url(),
+                    address.port
+                )
+            })?;
+            enabled.url.ok_or_else(|| {
+                enabled.message.unwrap_or_else(|| {
+                    format!(
+                        "Tailscale route for this Pocket is not active yet. Forward port {} over SSH or enable Tailscale.",
+                        address.port
+                    )
+                })
+            })?
+        }
+    } else {
+        address.url()
+    };
     if open_host_browser {
         crate::open_in_browser(&url).await?;
     }

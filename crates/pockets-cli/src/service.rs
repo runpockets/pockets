@@ -10,19 +10,48 @@ use pockets_core::fs_browser;
 
 const MACOS_LABEL: &str = "dev.pockets.daemon";
 
-pub fn render_template(port: u16) -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceConfig {
+    pub port: u16,
+    pub enable_tailscale: bool,
+    pub public_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstallOutcome {
+    pub path: PathBuf,
+    /// On Linux, `Some(true)` if `systemd` user lingering is active,
+    /// `Some(false)` if it could not be enabled without sudo, `None` on other OSes.
+    pub linger_enabled: Option<bool>,
+}
+
+pub fn render_template(config: &ServiceConfig) -> String {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "pockets".to_owned());
-    render_template_for(&exe, port)
+    render_template_for(&exe, config)
 }
 
-pub fn render_template_for(exe: &str, port: u16) -> String {
+pub fn render_template_for(exe: &str, config: &ServiceConfig) -> String {
+    let port = config.port;
+    let mut extra_args: Vec<String> = Vec::new();
+    if config.enable_tailscale {
+        extra_args.push("--tailscale".to_owned());
+    }
+    if let Some(url) = config.public_url.as_deref() {
+        extra_args.push("--public-url".to_owned());
+        extra_args.push(url.to_owned());
+    }
+
     #[cfg(target_os = "macos")]
     {
         let log_path = fs_browser::user_home_dir()
             .map(|h| h.join("Library/Logs/pockets.log").display().to_string())
             .unwrap_or_else(|| "/tmp/pockets.log".to_owned());
+        let extra_xml: String = extra_args
+            .iter()
+            .map(|arg| format!("    <string>{arg}</string>\n"))
+            .collect();
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,7 +64,7 @@ pub fn render_template_for(exe: &str, port: u16) -> String {
     <string>serve</string>
     <string>--port</string>
     <string>{port}</string>
-  </array>
+{extra_xml}  </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
@@ -53,13 +82,19 @@ pub fn render_template_for(exe: &str, port: u16) -> String {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
+        let suffix = if extra_args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", extra_args.join(" "))
+        };
         format!(
             r#"[Unit]
 Description=Pockets local self-hosted web app daemon
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-ExecStart={exe} serve --port {port}
+ExecStart={exe} serve --port {port}{suffix}
 Restart=on-failure
 RestartSec=2
 
@@ -71,7 +106,12 @@ WantedBy=default.target
 
     #[cfg(windows)]
     {
-        format!("# Run at login via Task Scheduler:\n{exe} serve --port {port}\n")
+        let suffix = if extra_args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", extra_args.join(" "))
+        };
+        format!("# Run at login via Task Scheduler:\n{exe} serve --port {port}{suffix}\n")
     }
 }
 
@@ -102,13 +142,54 @@ pub fn service_file_path() -> Result<PathBuf, String> {
     }
 }
 
-pub async fn install(port: u16) -> Result<PathBuf, String> {
+#[cfg(all(unix, not(target_os = "macos")))]
+pub async fn check_linux_linger() -> Option<bool> {
+    let user = current_unix_user()?;
+    let output = tokio::process::Command::new("loginctl")
+        .args(["show-user", &user, "-p", "Linger", "--value"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let val = String::from_utf8_lossy(&output.stdout).trim().to_ascii_lowercase();
+    match val.as_str() {
+        "yes" => Some(true),
+        "no" => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+pub async fn check_linux_linger() -> Option<bool> {
+    None
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+async fn ensure_linux_linger() -> Option<bool> {
+    if check_linux_linger().await == Some(true) {
+        return Some(true);
+    }
+    let user = current_unix_user()?;
+    let _ = run_cmd("loginctl", &["enable-linger", &user]).await;
+    check_linux_linger().await
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn current_unix_user() -> Option<String> {
+    std::env::var("USER")
+        .ok()
+        .filter(|u| !u.trim().is_empty())
+}
+
+pub async fn install(config: &ServiceConfig) -> Result<InstallOutcome, String> {
     let path = service_file_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
     }
-    let contents = render_template(port);
+    let contents = render_template(config);
     std::fs::write(&path, contents)
         .map_err(|err| format!("Could not write {}: {err}", path.display()))?;
 
@@ -118,15 +199,31 @@ pub async fn install(port: u16) -> Result<PathBuf, String> {
         // Unload any prior version cleanly; ignore errors if not previously loaded.
         let _ = run_cmd("launchctl", &["unload", &path_str]).await;
         run_cmd("launchctl", &["load", "-w", &path_str]).await?;
+        Ok(InstallOutcome {
+            path,
+            linger_enabled: None,
+        })
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         run_cmd("systemctl", &["--user", "daemon-reload"]).await?;
-        run_cmd("systemctl", &["--user", "enable", "--now", "pockets.service"]).await?;
+        run_cmd("systemctl", &["--user", "enable", "pockets.service"]).await?;
+        run_cmd("systemctl", &["--user", "restart", "pockets.service"]).await?;
+        let linger_enabled = ensure_linux_linger().await;
+        Ok(InstallOutcome {
+            path,
+            linger_enabled,
+        })
     }
 
-    Ok(path)
+    #[cfg(windows)]
+    {
+        Ok(InstallOutcome {
+            path,
+            linger_enabled: None,
+        })
+    }
 }
 
 pub async fn uninstall() -> Result<PathBuf, String> {
@@ -182,9 +279,32 @@ mod tests {
 
     #[test]
     fn template_embeds_executable_and_port() {
-        let text = render_template_for("/usr/local/bin/pockets", 18786);
+        let text = render_template_for(
+            "/usr/local/bin/pockets",
+            &ServiceConfig {
+                port: 18786,
+                enable_tailscale: false,
+                public_url: None,
+            },
+        );
         assert!(text.contains("/usr/local/bin/pockets"));
         assert!(text.contains("18786"));
         assert!(text.contains("serve"));
+        assert!(!text.contains("--tailscale"));
+    }
+
+    #[test]
+    fn template_embeds_tailscale_and_public_url_flags_when_configured() {
+        let text = render_template_for(
+            "/usr/local/bin/pockets",
+            &ServiceConfig {
+                port: 18786,
+                enable_tailscale: true,
+                public_url: Some("https://pockets.example.com".to_owned()),
+            },
+        );
+        assert!(text.contains("--tailscale"));
+        assert!(text.contains("--public-url"));
+        assert!(text.contains("https://pockets.example.com"));
     }
 }

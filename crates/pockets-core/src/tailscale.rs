@@ -20,8 +20,10 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::local_sites;
 use crate::projects::Store;
@@ -850,6 +852,137 @@ async fn sync_portal_with_bin(
     }
 }
 
+/// Cached Tailscale Serve routes for active live development previews, keyed by
+/// project ID (`project_id -> (local_port, remote_https_url)`). Keeping this
+/// cache avoids shelling out to `tailscale` on every status poll and guarantees
+/// preview routes are torn down cleanly when a preview stops or moves ports.
+#[derive(Clone, Default)]
+pub struct PreviewShares {
+    active: Arc<Mutex<BTreeMap<String, (u16, String)>>>,
+}
+
+impl PreviewShares {
+    /// Ensures the given loopback preview port is published privately over
+    /// Tailscale Serve, reusing the cached route when the port has not changed.
+    pub async fn ensure(&self, project_id: &str, local_port: u16) -> Result<String, String> {
+        let previous_port = {
+            let guard = self.active.lock().await;
+            if let Some((port, url)) = guard.get(project_id) {
+                if *port == local_port {
+                    return Ok(url.clone());
+                }
+                Some(*port)
+            } else {
+                None
+            }
+        };
+        if let Some(old_port) = previous_port {
+            let _ = disable_port_serve(old_port).await;
+        }
+        let url = enable_port_serve(local_port).await?;
+        let mut guard = self.active.lock().await;
+        guard.insert(project_id.to_owned(), (local_port, url.clone()));
+        Ok(url)
+    }
+
+    /// Tears down any Tailscale Serve route created for `project_id`'s preview.
+    pub async fn clear(&self, project_id: &str) {
+        let removed = {
+            let mut guard = self.active.lock().await;
+            guard.remove(project_id)
+        };
+        if let Some((port, _)) = removed {
+            let _ = disable_port_serve(port).await;
+        }
+    }
+}
+
+/// Publishes a local loopback HTTP port (`127.0.0.1:<port>`) privately over
+/// Tailscale Serve on `https://<node>.<tailnet>.ts.net:<port>`, reusing
+/// Pockets' route-ownership checks so unrelated Serve routes are never touched.
+pub async fn enable_port_serve(port: u16) -> Result<String, String> {
+    let bin = find_tailscale().ok_or_else(|| {
+        "Tailscale was not found on this machine. Install Tailscale from https://tailscale.com to access Pockets over your tailnet.".to_owned()
+    })?;
+    enable_port_serve_with_bin(&bin, port).await
+}
+
+async fn enable_port_serve_with_bin(bin: &Path, port: u16) -> Result<String, String> {
+    let report = detect_with_bin(bin).await;
+    if report.state != TailscaleState::Ready {
+        return Err(report.message);
+    }
+    let dns_name = report.dns_name.as_deref().ok_or_else(|| {
+        "Tailscale did not report a MagicDNS name for this machine.".to_owned()
+    })?;
+    enable_serve_route(bin, dns_name, port, port).await?;
+    Ok(share_url(dns_name, port))
+}
+
+/// Removes a Pockets-owned Tailscale Serve route for `127.0.0.1:<port>` if
+/// present; never touches absent or unrelated routes.
+pub async fn disable_port_serve(port: u16) -> Result<(), String> {
+    let Some(bin) = find_tailscale() else {
+        return Ok(());
+    };
+    disable_port_serve_with_bin(&bin, port).await
+}
+
+async fn disable_port_serve_with_bin(bin: &Path, port: u16) -> Result<(), String> {
+    let report = detect_with_bin(bin).await;
+    if report.state != TailscaleState::Ready {
+        return Ok(());
+    }
+    let Some(dns_name) = report.dns_name.as_deref() else {
+        return Ok(());
+    };
+    disable_serve_route(bin, dns_name, port, port).await
+}
+
+/// Returns `Some("https://<node>.<tailnet>.ts.net:<port>")` when Tailscale
+/// Serve currently owns the route from HTTPS `<port>` to `127.0.0.1:<port>`.
+pub async fn active_port_serve_url(port: u16) -> Option<String> {
+    let bin = find_tailscale()?;
+    let report = detect_with_bin(&bin).await;
+    if report.state != TailscaleState::Ready {
+        return None;
+    }
+    let dns_name = report.dns_name.as_deref()?;
+    let serve = inspect_serve_with_bin(&bin).await.ok()?;
+    if route_ownership(&serve, dns_name, port, port) == RouteOwnership::Owned {
+        Some(share_url(dns_name, port))
+    } else {
+        None
+    }
+}
+
+/// Appends an actionable Linux operator hint when `tailscale serve` fails due
+/// to non-root permissions on `tailscaled`.
+fn format_serve_error(err: String) -> String {
+    let lower = err.to_ascii_lowercase();
+    let is_permission_error = lower.contains("access denied")
+        || lower.contains("serve config denied")
+        || lower.contains("permission denied")
+        || lower.contains("must be run as root")
+        || lower.contains("requires root")
+        || lower.contains("operator");
+    if is_permission_error && !lower.contains("tailscale set --operator") {
+        let user = std::env::var("USER")
+            .ok()
+            .filter(|u| {
+                !u.is_empty()
+                    && u.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+            })
+            .unwrap_or_else(|| "$USER".to_owned());
+        format!(
+            "{err}. On Linux, grant your user permission once with: sudo tailscale set --operator={user}"
+        )
+    } else {
+        err
+    }
+}
+
 async fn inspect_serve_with_bin(bin: &Path) -> Result<ServeStatusJson, String> {
     let output = runtime::run(bin, &["serve", "status", "--json"]).await?;
     if output.stdout.iter().all(|b| b.is_ascii_whitespace()) {
@@ -879,7 +1012,9 @@ async fn enable_serve_route(
 
     let https_flag = format!("--https={external_port}");
     let target = format!("http://127.0.0.1:{target_port}");
-    runtime::run(bin, &["serve", "--bg", "--yes", &https_flag, &target]).await?;
+    runtime::run(bin, &["serve", "--bg", "--yes", &https_flag, &target])
+        .await
+        .map_err(format_serve_error)?;
 
     let after = inspect_serve_with_bin(bin).await?;
     if route_ownership(&after, dns_name, external_port, target_port) != RouteOwnership::Owned {
@@ -902,7 +1037,9 @@ async fn disable_serve_route(
         RouteOwnership::Owned => {}
     }
     let https_flag = format!("--https={external_port}");
-    runtime::run(bin, &["serve", &https_flag, "off"]).await?;
+    runtime::run(bin, &["serve", &https_flag, "off"])
+        .await
+        .map_err(format_serve_error)?;
     Ok(())
 }
 
@@ -1618,5 +1755,72 @@ exit 1
         assert!(!view.active);
         assert_eq!(view.url, None);
         assert!(view.message.unwrap().contains("Tailscale was not found"));
+    }
+
+    #[test]
+    fn format_serve_error_appends_linux_operator_hint_on_access_denied() {
+        let formatted = format_serve_error("Access denied: serve config denied".to_owned());
+        assert!(
+            formatted.contains("sudo tailscale set --operator="),
+            "got {formatted}"
+        );
+
+        let unrelated = format_serve_error("network timeout".to_owned());
+        assert_eq!(unrelated, "network timeout");
+    }
+
+    #[tokio::test]
+    async fn enable_and_disable_port_serve_manages_dashboard_route_safely() {
+        let temp = tempfile::tempdir().unwrap();
+        let dash_flag = temp.path().join("dash-route.flag");
+        let status_body = String::from_utf8(status_json(
+            "Running",
+            Some("cloud-vm.tail00000.ts.net."),
+            Some(vec!["cloud-vm.tail00000.ts.net"]),
+            vec!["https"],
+        ))
+        .unwrap();
+        let script = format!(
+            r#"
+DASH_FLAG='{}'
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+    printf '%s' '{status_body}'
+    exit 0
+fi
+if [ "$1" = "serve" ] && [ "$2" = "status" ] && [ "$3" = "--json" ]; then
+    if [ -f "$DASH_FLAG" ]; then
+        printf '%s' '{{"TCP":{{"18786":{{"HTTPS":true}}}},"Web":{{"cloud-vm.tail00000.ts.net:18786":{{"Handlers":{{"/":{{"Proxy":"http://127.0.0.1:18786"}}}}}}}}}}'
+    else
+        printf '{{}}'
+    fi
+    exit 0
+fi
+if [ "$1" = "serve" ] && [ "$2" = "--bg" ] && [ "$3" = "--yes" ] && [ "$4" = "--https=18786" ] && [ "$5" = "http://127.0.0.1:18786" ]; then
+    touch "$DASH_FLAG"
+    exit 0
+fi
+if [ "$1" = "serve" ] && [ "$2" = "--https=18786" ] && [ "$3" = "off" ]; then
+    rm -f "$DASH_FLAG"
+    exit 0
+fi
+echo "unexpected args: $@" >&2
+exit 1
+"#,
+            dash_flag.display()
+        );
+        let (bin, calls) = fake_tailscale(temp.path(), &script);
+
+        let url = enable_port_serve_with_bin(&bin, 18786).await.unwrap();
+        assert_eq!(url, "https://cloud-vm.tail00000.ts.net:18786");
+        assert!(dash_flag.exists());
+
+        disable_port_serve_with_bin(&bin, 18786).await.unwrap();
+        assert!(!dash_flag.exists());
+
+        let log = recorded_calls(&calls);
+        assert!(log
+            .iter()
+            .any(|c| c == "serve --bg --yes --https=18786 http://127.0.0.1:18786"));
+        assert!(log.iter().any(|c| c == "serve --https=18786 off"));
     }
 }

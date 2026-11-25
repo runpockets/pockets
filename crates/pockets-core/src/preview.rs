@@ -496,7 +496,8 @@ fn is_loopback_proxy_url(url: &str) -> bool {
 /// ever sees it — defense in depth: even a corrupted registry entry can
 /// never send a non-loopback URL to the browser. On non-macOS targets the
 /// helper itself carries the deferred-platform error; nothing is spawned.
-pub(crate) async fn open(previews: &Previews, session_id: &str) -> Result<(), String> {
+/// Validates and returns one ready preview's loopback proxy URL.
+pub(crate) fn open_url(previews: &Previews, session_id: &str) -> Result<String, String> {
     let status = status(previews, session_id, 0)?;
     if status.state != PreviewState::Ready {
         return Err(format!(
@@ -511,6 +512,12 @@ pub(crate) async fn open(previews: &Previews, session_id: &str) -> Result<(), St
             "the preview url for session {session_id:?} is not a loopback address and was not opened."
         ));
     }
+    Ok(url)
+}
+
+#[cfg(test)]
+pub(crate) async fn open(previews: &Previews, session_id: &str) -> Result<(), String> {
+    let url = open_url(previews, session_id)?;
     crate::open_in_browser(&url).await
 }
 

@@ -32,14 +32,18 @@ Already using Podman Desktop or the official macOS installer? Run `brew install 
 
 Bookmark `http://pockets.localhost:18786/` (or use Safari **File → Add to Dock…** / Chrome **Install App**) — from then on your saved URL just works.
 
-### Linux (Desktop, Raspberry Pi, Homelab, VPS)
+### Linux (Desktop, Raspberry Pi, Homelab, Cloud VM / VPS)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/runpockets/pockets/main/packaging/install.sh | sh
 pockets
 ```
 
-Installs Podman (via `apt`, `dnf`, or `pacman` if missing), installs the `pockets` binary, and enables the `systemd --user` background service automatically (pass `POCKETS_NO_SERVICE=1` to skip auto-enabling). Containers run rootlessly with zero VM overhead on Linux.
+Installs Podman (via `apt`, `dnf`, or `pacman` if missing), installs the `pockets` binary, enables `systemd --user` with lingering so Pockets stays running after SSH disconnect (pass `POCKETS_NO_SERVICE=1` to skip), and configures non-root Tailscale Serve access when Tailscale is installed. Containers run rootlessly with zero VM overhead on Linux.
+
+**Installing over SSH on a cloud VM?** Use the exact same command above:
+* **With Tailscale (recommended):** Pockets automatically publishes the dashboard privately on your tailnet (`https://<vm>.<tailnet>.ts.net:18786`), prints your one-time sign-in link in SSH, and opens installed Pockets and live previews directly over Tailscale HTTPS. (If you install Tailscale afterward, run `sudo tailscale set --operator=$USER` and `pockets tailscale on`.)
+* **Without Tailscale:** Pockets prints the exact `ssh -N -L 18786:127.0.0.1:18786 ...` tunnel command, or pass `--public-url https://pockets.example.com` (or `POCKETS_PUBLIC_URL`) if you put your own reverse proxy in front of `127.0.0.1:18786`.
 
 ---
 
@@ -76,6 +80,7 @@ pockets start <id>          # Start an installed Pocket
 pockets stop <id>           # Stop a running Pocket (preserves data)
 pockets service install     # Install & enable launchd (macOS) or systemd --user (Linux)
 pockets service uninstall   # Stop & remove the background service
+pockets tailscale on|off    # Enable/disable private Tailscale HTTPS access for the dashboard
 ```
 
 ---

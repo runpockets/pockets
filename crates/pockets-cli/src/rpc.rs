@@ -151,7 +151,12 @@ struct CheckAppUpdateArgs {
     force: bool,
 }
 
-pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Value, String> {
+pub async fn dispatch(
+    ctx: &AppContext,
+    command: &str,
+    body: Value,
+    remote_client: bool,
+) -> Result<Value, String> {
     match command {
         "check_app_update" => {
             let args: CheckAppUpdateArgs = if body.is_null() {
@@ -169,7 +174,7 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
         "pocket_status" => to_json(pockets_core::pocket_status(ctx).await?),
         "start_pocket" => to_json(pockets_core::start_pocket(ctx).await?),
         "stop_pocket" => to_json(pockets_core::stop_pocket(ctx).await?),
-        "open_pocket" => to_json(pockets_core::open_pocket(ctx, false).await?),
+        "open_pocket" => to_json(pockets_core::open_pocket(ctx, false, remote_client).await?),
 
         "list_projects" => to_json(creation::list_projects(ctx).await?),
         "import_project" => {
@@ -257,12 +262,20 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
 
         "project_preview_start" => {
             let args: ProjectIdArg = parse_args(body)?;
-            to_json(project_preview::project_preview_start(ctx, args.project_id).await?)
+            to_json(
+                project_preview::project_preview_start(ctx, args.project_id, remote_client).await?,
+            )
         }
         "project_preview_status" => {
             let args: PreviewStatusArgs = parse_args(body)?;
             to_json(
-                project_preview::project_preview_status(ctx, args.project_id, args.cursor).await?,
+                project_preview::project_preview_status(
+                    ctx,
+                    args.project_id,
+                    args.cursor,
+                    remote_client,
+                )
+                .await?,
             )
         }
         "project_preview_stop" => {
@@ -271,8 +284,10 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
         }
         "project_preview_open" => {
             let args: ProjectIdArg = parse_args(body)?;
-            project_preview::project_preview_open(ctx, args.project_id).await?;
-            Ok(Value::Null)
+            to_json(
+                project_preview::project_preview_open(ctx, args.project_id, false, remote_client)
+                    .await?,
+            )
         }
         "project_preview_logs" => {
             let args: ProjectIdArg = parse_args(body)?;
@@ -296,6 +311,7 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
                     ctx,
                     args.project_id,
                     args.decision,
+                    remote_client,
                 )
                 .await?,
             )
@@ -350,7 +366,7 @@ pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Va
         }
         "open_project" => {
             let args: IdArg = parse_args(body)?;
-            to_json(project_lifecycle::open_project(ctx, args.id, false).await?)
+            to_json(project_lifecycle::open_project(ctx, args.id, false, remote_client).await?)
         }
         "set_project_tailscale" => {
             let args: SetTailscaleArgs = parse_args(body)?;

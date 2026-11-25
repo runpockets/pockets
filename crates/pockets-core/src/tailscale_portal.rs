@@ -290,7 +290,7 @@ pub(crate) fn render_response(
             "503 Service Unavailable",
             render_simple_page(
                 &format!("{} is stopped", entry.name),
-                "Start this Pocket in Pockets on your Mac to open it from this device.",
+                "Start this Pocket in Pockets to open it from this device.",
                 true,
             ),
         );
@@ -321,7 +321,7 @@ fn render_launcher_page(snapshot: &PortalSnapshot) -> String {
             ));
         } else {
             paused_items.push_str(&format!(
-                r#"<li><div class="card paused"><div class="row"><span class="name">{name}</span><span class="status">Paused</span></div><p class="desc">{desc}</p><div class="meta">/{slug} · Stopped on your Mac</div></div></li>"#
+                r#"<li><div class="card paused"><div class="row"><span class="name">{name}</span><span class="status">Paused</span></div><p class="desc">{desc}</p><div class="meta">/{slug} · Stopped</div></div></li>"#
             ));
         }
     }

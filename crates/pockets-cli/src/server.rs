@@ -14,7 +14,7 @@
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use http::{header, HeaderMap, Method, Request, Response, StatusCode};
@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
-use pockets_core::{project_lifecycle, AppContext};
+use pockets_core::{project_lifecycle, tailscale, AppContext};
 
 use crate::rpc;
 
@@ -39,11 +39,104 @@ const COOKIE_NAME: &str = "pockets_session";
 const MAX_RPC_BODY_BYTES: usize = 1024 * 1024;
 const MAX_BACKUP_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedOrigin {
+    pub origin: String,
+    pub hosts: Vec<String>,
+    pub is_https: bool,
+}
+
+/// Validates and normalizes an explicit remote dashboard origin (such as
+/// `https://my-vps.tail1234.ts.net:18786` or `https://pockets.example.com`).
+pub fn parse_trusted_origin(raw: &str) -> Result<TrustedOrigin, String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    let lower_full = trimmed.to_ascii_lowercase();
+    let (scheme, rest) = if let Some(rest) = lower_full.strip_prefix("https://") {
+        ("https", rest)
+    } else if let Some(rest) = lower_full.strip_prefix("http://") {
+        ("http", rest)
+    } else {
+        return Err(format!(
+            "Remote URL '{raw}' must start with https:// or http://"
+        ));
+    };
+    if rest.is_empty()
+        || rest.contains('/')
+        || rest.contains('?')
+        || rest.contains('#')
+        || rest.contains('@')
+        || rest.bytes().any(|b| b <= 0x20 || b == 0x7f)
+    {
+        return Err(format!(
+            "Remote URL '{raw}' must be a bare origin (scheme://host[:port]) without paths or credentials."
+        ));
+    }
+    let lower = rest.to_ascii_lowercase();
+    let (host, port) = if let Some((h, p)) = lower.rsplit_once(':') {
+        if h.is_empty() || h.contains(':') {
+            return Err(format!("Invalid host in remote URL '{raw}'."));
+        }
+        let port = p
+            .parse::<u16>()
+            .map_err(|_| format!("Invalid port in remote URL '{raw}'."))?;
+        if port == 0 {
+            return Err(format!("Port cannot be 0 in remote URL '{raw}'."));
+        }
+        (h.to_owned(), Some(port))
+    } else {
+        (lower, None)
+    };
+    if host.is_empty()
+        || host.starts_with('.')
+        || host.ends_with('.')
+        || host.contains("..")
+        || !host
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.'))
+    {
+        return Err(format!("Invalid hostname in remote URL '{raw}'."));
+    }
+    let is_https = scheme == "https";
+    let default_port = if is_https { 443 } else { 80 };
+    let effective_port = port.unwrap_or(default_port);
+    let origin = if effective_port == default_port {
+        format!("{scheme}://{host}")
+    } else {
+        format!("{scheme}://{host}:{effective_port}")
+    };
+    let mut hosts = vec![format!("{host}:{effective_port}")];
+    if effective_port == default_port {
+        hosts.push(host);
+    }
+    Ok(TrustedOrigin {
+        origin,
+        hosts,
+        is_https,
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DaemonRecord {
     pub pid: u32,
     pub port: u16,
+    pub token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DaemonReady {
+    pub port: u16,
+    pub remote_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DaemonOptions {
+    pub port: u16,
+    pub dev_origin: Option<String>,
+    pub public_url: Option<String>,
+    pub enable_tailscale: bool,
     pub token: String,
 }
 
@@ -53,6 +146,7 @@ pub struct ServerState {
     pub port: u16,
     pub token: String,
     pub dev_origin: Option<String>,
+    pub extra_origins: Arc<RwLock<Vec<TrustedOrigin>>>,
 }
 
 pub fn generate_session_token() -> String {
@@ -211,18 +305,29 @@ pub fn bootstrap_url(port: u16, token: &str) -> String {
     format!("http://pockets.localhost:{port}/auth/bootstrap?token={token}")
 }
 
+pub fn bootstrap_url_for(base_url: &str, token: &str) -> String {
+    format!("{}/auth/bootstrap?token={token}", base_url.trim_end_matches('/'))
+}
+
 pub fn dashboard_url(port: u16) -> String {
     format!("http://pockets.localhost:{port}/")
 }
 
 pub async fn run_daemon(
     ctx: AppContext,
-    port: u16,
-    dev_origin: Option<String>,
-    token: String,
-    on_ready: Option<tokio::sync::oneshot::Sender<u16>>,
+    options: DaemonOptions,
+    on_ready: Option<tokio::sync::oneshot::Sender<DaemonReady>>,
 ) -> Result<(), String> {
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+    let mut initial_origins = Vec::new();
+    let mut primary_remote_url: Option<String> = None;
+
+    if let Some(raw_public) = options.public_url.as_deref() {
+        let parsed = parse_trusted_origin(raw_public)?;
+        primary_remote_url = Some(parsed.origin.clone());
+        initial_origins.push(parsed);
+    }
+
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), options.port);
     let listener = TcpListener::bind(addr)
         .await
         .map_err(|err| format!("Could not bind Pockets daemon on {addr}: {err}"))?;
@@ -231,13 +336,35 @@ pub async fn run_daemon(
         .map_err(|err| format!("Could not read bound address: {err}"))?
         .port();
 
+    let mut needs_tailscale_retry = false;
+    if options.enable_tailscale {
+        match tailscale::enable_port_serve(bound_port).await {
+            Ok(ts_url) => {
+                if let Ok(parsed) = parse_trusted_origin(&ts_url) {
+                    if primary_remote_url.is_none() {
+                        primary_remote_url = Some(parsed.origin.clone());
+                    }
+                    if !initial_origins.contains(&parsed) {
+                        initial_origins.push(parsed);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("warning: could not publish Pockets dashboard on Tailscale yet ({err})");
+                needs_tailscale_retry = true;
+            }
+        }
+    }
+
+    let extra_origins = Arc::new(RwLock::new(initial_origins));
     let pid = std::process::id();
     write_daemon_record(
         &ctx,
         &DaemonRecord {
             pid,
             port: bound_port,
-            token: token.clone(),
+            token: options.token.clone(),
+            remote_url: primary_remote_url.clone(),
         },
     )?;
 
@@ -246,15 +373,54 @@ pub async fn run_daemon(
         housekeeping_ctx.startup_housekeeping().await;
     });
 
+    // On VM boot, `tailscaled` can take a few seconds to come online after
+    // `systemd --user` starts Pockets. Retry a few times cleanly in the background.
+    if needs_tailscale_retry {
+        let retry_ctx = ctx.clone();
+        let retry_origins = Arc::clone(&extra_origins);
+        let retry_token = options.token.clone();
+        let existing_public = primary_remote_url.clone();
+        tokio::spawn(async move {
+            for delay_secs in [2u64, 4, 8, 15, 30] {
+                tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+                if let Ok(ts_url) = tailscale::enable_port_serve(bound_port).await {
+                    if let Ok(parsed) = parse_trusted_origin(&ts_url) {
+                        if let Ok(mut guard) = retry_origins.write() {
+                            if !guard.contains(&parsed) {
+                                guard.push(parsed.clone());
+                            }
+                        }
+                        let remote_url = existing_public.clone().or(Some(parsed.origin));
+                        let _ = write_daemon_record(
+                            &retry_ctx,
+                            &DaemonRecord {
+                                pid,
+                                port: bound_port,
+                                token: retry_token.clone(),
+                                remote_url,
+                            },
+                        );
+                        eprintln!("Pockets dashboard is now reachable on your tailnet at {ts_url}");
+                    }
+                    break;
+                }
+            }
+        });
+    }
+
     if let Some(tx) = on_ready {
-        let _ = tx.send(bound_port);
+        let _ = tx.send(DaemonReady {
+            port: bound_port,
+            remote_url: primary_remote_url,
+        });
     }
 
     let state = Arc::new(ServerState {
         ctx: ctx.clone(),
         port: bound_port,
-        token,
-        dev_origin,
+        token: options.token,
+        dev_origin: options.dev_origin,
+        extra_origins,
     });
 
     loop {
@@ -315,7 +481,7 @@ async fn shutdown_signal() {
     }
 }
 
-fn allowed_host(host: &str, port: u16) -> bool {
+fn is_loopback_host(host: &str, port: u16) -> bool {
     let lower = host.trim().to_ascii_lowercase();
     let expected = [
         format!("pockets.localhost:{port}"),
@@ -325,7 +491,22 @@ fn allowed_host(host: &str, port: u16) -> bool {
     expected.iter().any(|candidate| candidate == &lower)
 }
 
-fn allowed_origin(origin: &str, port: u16, dev_origin: Option<&str>) -> bool {
+fn allowed_host(host: &str, port: u16, extra: &[TrustedOrigin]) -> bool {
+    if is_loopback_host(host, port) {
+        return true;
+    }
+    let lower = host.trim().to_ascii_lowercase();
+    extra
+        .iter()
+        .any(|origin| origin.hosts.iter().any(|candidate| candidate == &lower))
+}
+
+fn allowed_origin(
+    origin: &str,
+    port: u16,
+    dev_origin: Option<&str>,
+    extra: &[TrustedOrigin],
+) -> bool {
     let lower = origin.trim().to_ascii_lowercase();
     let expected = [
         format!("http://pockets.localhost:{port}"),
@@ -335,12 +516,44 @@ fn allowed_origin(origin: &str, port: u16, dev_origin: Option<&str>) -> bool {
     if expected.iter().any(|candidate| candidate == &lower) {
         return true;
     }
+    if extra.iter().any(|trusted| trusted.origin == lower) {
+        return true;
+    }
     if let Some(dev) = dev_origin {
         if lower == dev.trim().trim_end_matches('/').to_ascii_lowercase() {
             return true;
         }
     }
     false
+}
+
+fn is_https_request(headers: &HeaderMap, host: &str, extra: &[TrustedOrigin]) -> bool {
+    if let Some(proto) = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+    {
+        if proto
+            .split(',')
+            .next()
+            .is_some_and(|first| first.trim().eq_ignore_ascii_case("https"))
+        {
+            return true;
+        }
+    }
+    let lower = host.trim().to_ascii_lowercase();
+    extra
+        .iter()
+        .any(|trusted| trusted.is_https && trusted.hosts.iter().any(|h| h == &lower))
+}
+
+fn session_cookie_header(token: &str, secure: bool) -> String {
+    if secure {
+        format!(
+            "{COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=31536000"
+        )
+    } else {
+        format!("{COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000")
+    }
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -391,17 +604,30 @@ fn extract_query_param(query: &str, key: &str) -> Option<String> {
 }
 
 async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Response<Full<Bytes>> {
-    let host_ok = req
+    let extra_origins = state
+        .extra_origins
+        .read()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    let request_host = req
         .headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|host| allowed_host(host, state.port));
-    if !host_ok {
+        .map(str::to_owned);
+    let Some(host) = request_host.as_deref() else {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            json!({ "error": "Refused request with disallowed Host header." }),
+        );
+    };
+    if !allowed_host(host, state.port, &extra_origins) {
         return json_response(
             StatusCode::FORBIDDEN,
             json!({ "error": "Refused request with disallowed Host header." }),
         );
     }
+    let remote_client = !is_loopback_host(host, state.port);
+    let secure_cookie = is_https_request(req.headers(), host, &extra_origins);
 
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
@@ -415,7 +641,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
                 .get(header::ORIGIN)
                 .and_then(|v| v.to_str().ok()),
         ) {
-            if allowed_origin(origin, state.port, Some(dev)) {
+            if allowed_origin(origin, state.port, Some(dev), &extra_origins) {
                 return Response::builder()
                     .status(StatusCode::NO_CONTENT)
                     .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin)
@@ -443,7 +669,12 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
 
     if method == Method::POST {
         if let Some(origin) = request_origin.as_deref() {
-            if !allowed_origin(origin, state.port, state.dev_origin.as_deref()) {
+            if !allowed_origin(
+                origin,
+                state.port,
+                state.dev_origin.as_deref(),
+                &extra_origins,
+            ) {
                 return json_response(
                     StatusCode::FORBIDDEN,
                     json!({ "error": "Refused cross-origin state change." }),
@@ -466,10 +697,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
                     json!({ "error": "Invalid Pockets session token." }),
                 );
             }
-            let cookie = format!(
-                "{COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000",
-                state.token
-            );
+            let cookie = session_cookie_header(&state.token, secure_cookie);
             Response::builder()
                 .status(StatusCode::FOUND)
                 .header(header::SET_COOKIE, cookie)
@@ -512,10 +740,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
                     json!({ "error": "That session token did not match the running Pockets daemon." }),
                 );
             }
-            let cookie = format!(
-                "{COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000",
-                state.token
-            );
+            let cookie = session_cookie_header(&state.token, secure_cookie);
             let mut resp = json_response(StatusCode::OK, json!({ "ok": true }));
             if let Ok(val) = cookie.parse() {
                 resp.headers_mut().insert(header::SET_COOKIE, val);
@@ -552,7 +777,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
                     }
                 }
             };
-            match rpc::dispatch(&state.ctx, &command, body).await {
+            match rpc::dispatch(&state.ctx, &command, body, remote_client).await {
                 Ok(result) => json_response(StatusCode::OK, json!({ "ok": true, "result": result })),
                 Err(error) => {
                     json_response(StatusCode::BAD_REQUEST, json!({ "ok": false, "error": error }))
@@ -604,7 +829,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
 
     // Attach CORS headers only when an explicitly configured dev origin matches.
     if let (Some(dev), Some(origin)) = (state.dev_origin.as_deref(), request_origin.as_deref()) {
-        if allowed_origin(origin, state.port, Some(dev)) {
+        if allowed_origin(origin, state.port, Some(dev), &extra_origins) {
             if let Ok(val) = origin.parse() {
                 response
                     .headers_mut()
@@ -794,26 +1019,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn host_guard_allows_only_loopback_dashboard_hosts() {
-        assert!(allowed_host("pockets.localhost:18786", 18786));
-        assert!(allowed_host("127.0.0.1:18786", 18786));
-        assert!(allowed_host("localhost:18786", 18786));
-        assert!(!allowed_host("evil.com:18786", 18786));
-        assert!(!allowed_host("notes.localhost:18786", 18786));
-        assert!(!allowed_host("pockets.localhost:18788", 18786));
+    fn host_guard_allows_loopback_and_explicit_trusted_origins_only() {
+        let none: Vec<TrustedOrigin> = Vec::new();
+        assert!(allowed_host("pockets.localhost:18786", 18786, &none));
+        assert!(allowed_host("127.0.0.1:18786", 18786, &none));
+        assert!(allowed_host("localhost:18786", 18786, &none));
+        assert!(!allowed_host("evil.com:18786", 18786, &none));
+        assert!(!allowed_host("notes.localhost:18786", 18786, &none));
+        assert!(!allowed_host("pockets.localhost:18788", 18786, &none));
+
+        let ts = parse_trusted_origin("https://cloud-vm.tail1234.ts.net:18786").unwrap();
+        let custom = parse_trusted_origin("https://pockets.example.com/").unwrap();
+        let extra = vec![ts, custom];
+        assert!(allowed_host("cloud-vm.tail1234.ts.net:18786", 18786, &extra));
+        assert!(!allowed_host("cloud-vm.tail1234.ts.net:18788", 18786, &extra));
+        assert!(allowed_host("pockets.example.com", 18786, &extra));
+        assert!(allowed_host("pockets.example.com:443", 18786, &extra));
+        assert!(!allowed_host("other.example.com", 18786, &extra));
     }
 
     #[test]
     fn origin_guard_blocks_other_pockets_and_external_sites() {
-        assert!(allowed_origin("http://pockets.localhost:18786", 18786, None));
-        assert!(allowed_origin("http://127.0.0.1:18786", 18786, None));
-        assert!(!allowed_origin("http://notes.localhost:18788", 18786, None));
-        assert!(!allowed_origin("https://evil.example", 18786, None));
+        let none: Vec<TrustedOrigin> = Vec::new();
+        assert!(allowed_origin("http://pockets.localhost:18786", 18786, None, &none));
+        assert!(allowed_origin("http://127.0.0.1:18786", 18786, None, &none));
+        assert!(!allowed_origin("http://notes.localhost:18788", 18786, None, &none));
+        assert!(!allowed_origin("https://evil.example", 18786, None, &none));
         assert!(allowed_origin(
             "http://localhost:1420",
             18786,
-            Some("http://localhost:1420")
+            Some("http://localhost:1420"),
+            &none
         ));
+
+        let ts = parse_trusted_origin("https://cloud-vm.tail1234.ts.net:18786").unwrap();
+        let extra = vec![ts];
+        assert!(allowed_origin(
+            "https://cloud-vm.tail1234.ts.net:18786",
+            18786,
+            None,
+            &extra
+        ));
+        assert!(!allowed_origin(
+            "https://cloud-vm.tail1234.ts.net:18788",
+            18786,
+            None,
+            &extra
+        ));
+    }
+
+    #[test]
+    fn parse_trusted_origin_rejects_paths_credentials_and_bad_schemes() {
+        assert!(parse_trusted_origin("ftp://example.com").is_err());
+        assert!(parse_trusted_origin("https://example.com/path").is_err());
+        assert!(parse_trusted_origin("https://user@example.com").is_err());
+        assert!(parse_trusted_origin("https://example.com:0").is_err());
+
+        let parsed = parse_trusted_origin("HTTPS://My-VPS.Tail1234.ts.net:18786/").unwrap();
+        assert_eq!(parsed.origin, "https://my-vps.tail1234.ts.net:18786");
+        assert!(parsed.is_https);
+        assert_eq!(parsed.hosts, vec!["my-vps.tail1234.ts.net:18786"]);
+    }
+
+    #[test]
+    fn secure_cookie_flag_applies_to_https_remote_requests() {
+        let ts = parse_trusted_origin("https://cloud-vm.tail1234.ts.net:18786").unwrap();
+        let extra = vec![ts];
+        let headers = HeaderMap::new();
+        assert!(!is_https_request(&headers, "pockets.localhost:18786", &extra));
+        assert!(is_https_request(
+            &headers,
+            "cloud-vm.tail1234.ts.net:18786",
+            &extra
+        ));
+        assert!(session_cookie_header("abc", true).contains("; Secure;"));
+        assert!(!session_cookie_header("abc", false).contains("; Secure;"));
     }
 
     #[test]

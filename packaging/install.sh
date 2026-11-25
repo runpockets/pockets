@@ -73,9 +73,40 @@ mkdir -p "$INSTALL_DIR"
 install -m 0755 "$TMP_DIR/pockets" "$INSTALL_DIR/pockets"
 
 echo "Installed pockets to $INSTALL_DIR/pockets"
-if [ "$OS" = "Linux" ] && [ "${POCKETS_NO_SERVICE:-0}" != "1" ] && command -v systemctl >/dev/null 2>&1; then
-  echo "Enabling Pockets user background service (set POCKETS_NO_SERVICE=1 to skip)..."
-  "$INSTALL_DIR/pockets" service install || true
+if [ "$OS" = "Linux" ]; then
+  CURRENT_USER="${USER:-$(id -un)}"
+
+  # Allow non-root Pockets to manage private `tailscale serve` HTTPS routes on Linux.
+  if [ "$(id -u)" -ne 0 ] && command -v tailscale >/dev/null 2>&1; then
+    echo "Granting $CURRENT_USER permission to manage Tailscale Serve routes..."
+    if command -v sudo >/dev/null 2>&1; then
+      sudo tailscale set --operator="$CURRENT_USER" || \
+        echo "Note: Run 'sudo tailscale set --operator=$CURRENT_USER' so Pockets can share apps over Tailscale."
+    else
+      echo "Note: Run 'sudo tailscale set --operator=$CURRENT_USER' so Pockets can share apps over Tailscale."
+    fi
+  fi
+
+  if [ "${POCKETS_NO_SERVICE:-0}" != "1" ] && command -v systemctl >/dev/null 2>&1; then
+    # Keep systemd --user (daemon, Tailscale portal, and rootless Podman) alive after SSH logout.
+    if command -v loginctl >/dev/null 2>&1; then
+      LINGER_STATE="$(loginctl show-user "$CURRENT_USER" -p Linger --value 2>/dev/null || true)"
+      if [ "$LINGER_STATE" != "yes" ]; then
+        echo "Enabling systemd user lingering for $CURRENT_USER..."
+        if ! loginctl enable-linger "$CURRENT_USER" 2>/dev/null; then
+          if command -v sudo >/dev/null 2>&1; then
+            sudo loginctl enable-linger "$CURRENT_USER" || \
+              echo "Note: Run 'sudo loginctl enable-linger $CURRENT_USER' so Pockets stays running after SSH disconnect."
+          else
+            echo "Note: Run 'sudo loginctl enable-linger $CURRENT_USER' so Pockets stays running after SSH disconnect."
+          fi
+        fi
+      fi
+    fi
+
+    echo "Enabling Pockets user background service (set POCKETS_NO_SERVICE=1 to skip)..."
+    "$INSTALL_DIR/pockets" service install || true
+  fi
 fi
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;

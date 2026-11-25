@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use pockets_core::{
     creation, development_commands, fs_browser, github_install, project_lifecycle,
-    runtime::RuntimeState, AppContext,
+    runtime::RuntimeState, tailscale, AppContext,
 };
 
 struct Cli {
@@ -16,18 +16,21 @@ struct Cli {
     command: Option<Commands>,
 }
 
+#[derive(Debug, Clone)]
+struct ServerFlags {
+    port: u16,
+    no_bootstrap: bool,
+    dev_origin: Option<String>,
+    public_url: Option<String>,
+    /// `Some(true)` for `--tailscale`, `Some(false)` for `--no-tailscale`, `None` for auto.
+    tailscale: Option<bool>,
+}
+
 enum Commands {
     Help,
     Version,
-    Open {
-        port: u16,
-        no_bootstrap: bool,
-    },
-    Serve {
-        port: u16,
-        dev_origin: Option<String>,
-        no_bootstrap: bool,
-    },
+    Open(ServerFlags),
+    Serve(ServerFlags),
     Doctor {
         bootstrap: bool,
     },
@@ -56,6 +59,10 @@ enum Commands {
     },
     Service {
         action: ServiceAction,
+        flags: ServerFlags,
+    },
+    Tailscale {
+        action: TailscaleAction,
         port: u16,
     },
     Url,
@@ -67,6 +74,12 @@ enum ServiceAction {
     Uninstall,
 }
 
+enum TailscaleAction {
+    Status,
+    On,
+    Off,
+}
+
 const HELP_TEXT: &str = "\
 Pockets — Local-first home for personal self-hosted web apps.
 
@@ -74,8 +87,11 @@ Usage:
   pockets [OPTIONS] [COMMAND]
 
 Commands:
-  open [--port PORT] [--no-bootstrap]     Start daemon (if needed) and open dashboard (default)
-  serve [--port PORT] [--dev-origin URL]  Run local web dashboard daemon in foreground
+  open [--port PORT] [--tailscale] [--public-url URL] [--no-bootstrap]
+                                          Start daemon (if needed) and open dashboard (default)
+  serve [--port PORT] [--tailscale] [--public-url URL] [--dev-origin URL]
+                                          Run local web dashboard daemon in foreground
+  tailscale [on|off|status] [--port PORT] Manage private Tailscale HTTPS access for the dashboard
   doctor [--bootstrap]                    Check Podman, Tailscale, and local environment health
   list                                    List registered Pockets
   new <NAME> [--parent DIR] [--folder SLUG] [--brief TEXT]
@@ -85,7 +101,7 @@ Commands:
   start <ID>                              Start an installed Pocket
   stop <ID>                               Stop a running Pocket
   status <ID>                             Show status for an installed Pocket
-  service [install|uninstall|print] [--port PORT]
+  service [install|uninstall|print] [--port PORT] [--tailscale] [--public-url URL]
                                           Install/uninstall/print background service (launchd/systemd)
   url                                     Print authenticated sign-in URL for any browser
 
@@ -141,18 +157,8 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
     let sub = rest[0].as_str();
     let args = &rest[1..];
     let command = match sub {
-        "open" => {
-            let (port, no_bootstrap, _) = parse_server_flags(args)?;
-            Commands::Open { port, no_bootstrap }
-        }
-        "serve" => {
-            let (port, no_bootstrap, dev_origin) = parse_server_flags(args)?;
-            Commands::Serve {
-                port,
-                dev_origin,
-                no_bootstrap,
-            }
-        }
+        "open" => Commands::Open(parse_server_flags(args)?),
+        "serve" => Commands::Serve(parse_server_flags(args)?),
         "doctor" => {
             let mut bootstrap = false;
             for arg in args {
@@ -262,8 +268,27 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
                 Some("print") => (ServiceAction::Print, &args[1..]),
                 _ => (ServiceAction::Print, args),
             };
-            let (port, _, _) = parse_server_flags(rest_args)?;
-            Commands::Service { action, port }
+            let flags = parse_server_flags(rest_args)?;
+            Commands::Service { action, flags }
+        }
+        "tailscale" => {
+            let (action, rest_args) = match args.first().map(String::as_str) {
+                Some("on") | Some("enable") => (TailscaleAction::On, &args[1..]),
+                Some("off") | Some("disable") => (TailscaleAction::Off, &args[1..]),
+                Some("status") => (TailscaleAction::Status, &args[1..]),
+                None => (TailscaleAction::Status, args),
+                Some(flag) if flag.starts_with('-') => (TailscaleAction::Status, args),
+                Some(other) => {
+                    return Err(format!(
+                        "Unknown tailscale action '{other}'. Use `pockets tailscale [on|off|status]`."
+                    ));
+                }
+            };
+            let flags = parse_server_flags(rest_args)?;
+            Commands::Tailscale {
+                action,
+                port: flags.port,
+            }
         }
         "url" => Commands::Url,
         other => return Err(format!("Unknown command '{other}'. Run `pockets --help`.")),
@@ -275,36 +300,71 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
     })
 }
 
-fn parse_server_flags(args: &[String]) -> Result<(u16, bool, Option<String>), String> {
-    let mut port = server::DEFAULT_PORT;
-    let mut no_bootstrap = false;
-    let mut dev_origin = None;
+fn default_server_flags() -> ServerFlags {
+    let public_url = std::env::var("POCKETS_PUBLIC_URL")
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
+    let tailscale = std::env::var("POCKETS_TAILSCALE_DASHBOARD")
+        .ok()
+        .and_then(|v| match v.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        });
+    ServerFlags {
+        port: server::DEFAULT_PORT,
+        no_bootstrap: false,
+        dev_origin: None,
+        public_url,
+        tailscale,
+    }
+}
+
+fn parse_server_flags(args: &[String]) -> Result<ServerFlags, String> {
+    let mut flags = default_server_flags();
     let mut idx = 0;
     while idx < args.len() {
         match args[idx].as_str() {
             "--port" => {
                 let raw = args.get(idx + 1).ok_or("Missing value for --port")?;
-                port = raw
+                flags.port = raw
                     .parse::<u16>()
                     .map_err(|_| format!("Invalid port '{raw}'"))?;
                 idx += 2;
             }
             "--no-bootstrap" => {
-                no_bootstrap = true;
+                flags.no_bootstrap = true;
                 idx += 1;
             }
             "--dev-origin" => {
-                dev_origin = Some(
+                flags.dev_origin = Some(
                     args.get(idx + 1)
                         .ok_or("Missing value for --dev-origin")?
                         .clone(),
                 );
                 idx += 2;
             }
+            "--public-url" => {
+                flags.public_url = Some(
+                    args.get(idx + 1)
+                        .ok_or("Missing value for --public-url")?
+                        .clone(),
+                );
+                idx += 2;
+            }
+            "--tailscale" => {
+                flags.tailscale = Some(true);
+                idx += 1;
+            }
+            "--no-tailscale" => {
+                flags.tailscale = Some(false);
+                idx += 1;
+            }
             other => return Err(format!("Unknown option: {other}")),
         }
     }
-    Ok((port, no_bootstrap, dev_origin))
+    Ok(flags)
 }
 
 #[tokio::main]
@@ -339,14 +399,10 @@ async fn main() {
     };
 
     let result = match cli.command {
-        None => run_open(ctx, server::DEFAULT_PORT, false).await,
+        None => run_open(ctx, default_server_flags()).await,
         Some(Commands::Help | Commands::Version) => Ok(()),
-        Some(Commands::Open { port, no_bootstrap }) => run_open(ctx, port, no_bootstrap).await,
-        Some(Commands::Serve {
-            port,
-            dev_origin,
-            no_bootstrap,
-        }) => run_serve(ctx, port, dev_origin, no_bootstrap).await,
+        Some(Commands::Open(flags)) => run_open(ctx, flags).await,
+        Some(Commands::Serve(flags)) => run_serve(ctx, flags).await,
         Some(Commands::Doctor { bootstrap }) => run_doctor(ctx, bootstrap).await,
         Some(Commands::List) => run_list(ctx).await,
         Some(Commands::New {
@@ -360,13 +416,109 @@ async fn main() {
         Some(Commands::Start { id }) => run_start(ctx, id).await,
         Some(Commands::Stop { id }) => run_stop(ctx, id).await,
         Some(Commands::Status { id }) => run_status(ctx, id).await,
-        Some(Commands::Service { action, port }) => run_service(ctx, action, port).await,
+        Some(Commands::Service { action, flags }) => run_service(ctx, action, flags).await,
+        Some(Commands::Tailscale { action, port }) => run_tailscale(ctx, action, port).await,
         Some(Commands::Url) => run_url(ctx).await,
     };
 
     if let Err(err) = result {
         eprintln!("error: {err}");
         std::process::exit(1);
+    }
+}
+
+fn is_headless_session() -> bool {
+    let has_ssh = std::env::var_os("SSH_CONNECTION").is_some_and(|v| !v.is_empty())
+        || std::env::var_os("SSH_TTY").is_some_and(|v| !v.is_empty())
+        || std::env::var_os("SSH_CLIENT").is_some_and(|v| !v.is_empty());
+    if has_ssh {
+        return true;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let has_display = std::env::var_os("DISPLAY").is_some_and(|v| !v.is_empty())
+            || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty());
+        !has_display
+    }
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    {
+        false
+    }
+}
+
+fn should_enable_tailscale_dashboard(flags: &ServerFlags, headless: bool) -> bool {
+    match flags.tailscale {
+        Some(explicit) => explicit,
+        None => headless && tailscale::find_tailscale().is_some(),
+    }
+}
+
+fn ssh_target_hint() -> String {
+    let user = std::env::var("USER")
+        .ok()
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| "user".to_owned());
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| "<vm-host>".to_owned());
+    format!("{user}@{host}")
+}
+
+async fn print_and_maybe_open_dashboard(
+    port: u16,
+    token: &str,
+    remote_url: Option<&str>,
+    headless: bool,
+    open_browser: bool,
+) {
+    let local_bootstrap = server::bootstrap_url(port, token);
+    let local_dash = server::dashboard_url(port);
+
+    if let Some(remote) = remote_url {
+        let remote_bootstrap = server::bootstrap_url_for(remote, token);
+        let remote_bookmark = format!("{}/", remote.trim_end_matches('/'));
+        println!("Pockets dashboard (remote / Tailscale):");
+        println!("  Sign-in URL (open once): {remote_bootstrap}");
+        println!("  Dashboard bookmark:      {remote_bookmark}");
+        if !headless {
+            println!("Local URL:                 {local_dash}");
+            println!("Local sign-in URL:         {local_bootstrap}");
+            if open_browser {
+                if let Err(err) = pockets_core::open_in_browser(&local_bootstrap).await {
+                    println!("Could not open default browser automatically ({err})");
+                }
+            }
+        }
+        return;
+    }
+
+    if headless {
+        let target = ssh_target_hint();
+        println!("Pockets is running on 127.0.0.1:{port} (headless / SSH session detected).");
+        println!("To open from your laptop over SSH:");
+        println!("  ssh -N -L {port}:127.0.0.1:{port} {target}");
+        println!("Then open once in your browser:");
+        println!("  {local_bootstrap}");
+        println!(
+            "Tip: For direct HTTPS access from any device (no SSH tunnel needed), \
+             install Tailscale (`sudo tailscale up --operator=$USER`) and run `pockets tailscale on`."
+        );
+        return;
+    }
+
+    println!("Pockets dashboard running at {local_dash}");
+    println!("Open in any browser: {local_bootstrap}");
+    if open_browser {
+        if let Err(err) = pockets_core::open_in_browser(&local_bootstrap).await {
+            println!("Could not open default browser automatically ({err})");
+        }
     }
 }
 
@@ -389,74 +541,95 @@ async fn maybe_bootstrap_podman(no_bootstrap: bool) {
 async fn run_url(ctx: AppContext) -> Result<(), String> {
     if let Some(existing) = server::read_daemon_record(&ctx) {
         if server::probe_running_daemon(&existing).await {
-            println!("{}", server::bootstrap_url(existing.port, &existing.token));
+            if let Some(remote) = existing.remote_url.as_deref() {
+                println!("{}", server::bootstrap_url_for(remote, &existing.token));
+                if !is_headless_session() {
+                    println!("{}", server::bootstrap_url(existing.port, &existing.token));
+                }
+            } else {
+                println!("{}", server::bootstrap_url(existing.port, &existing.token));
+            }
             return Ok(());
         }
     }
     let token = server::load_or_create_session_token(&ctx)?;
-    println!(
-        "{} (start the daemon first with `pockets`)",
-        server::bootstrap_url(server::DEFAULT_PORT, &token)
-    );
+    if let Some(ts_url) = tailscale::active_port_serve_url(server::DEFAULT_PORT).await {
+        println!(
+            "{} (start the daemon first with `pockets`)",
+            server::bootstrap_url_for(&ts_url, &token)
+        );
+    } else {
+        println!(
+            "{} (start the daemon first with `pockets`)",
+            server::bootstrap_url(server::DEFAULT_PORT, &token)
+        );
+    }
     Ok(())
 }
 
-async fn try_open_existing_daemon(ctx: &AppContext) -> bool {
+async fn try_open_existing_daemon(ctx: &AppContext, headless: bool) -> bool {
     if let Some(existing) = server::read_daemon_record(ctx) {
         if server::probe_running_daemon(&existing).await {
-            let url = server::bootstrap_url(existing.port, &existing.token);
-            println!(
-                "Pockets is already running at {}",
-                server::dashboard_url(existing.port)
-            );
-            println!("Open in any browser: {url}");
-            if let Err(err) = pockets_core::open_in_browser(&url).await {
-                println!("Could not open default browser automatically ({err})");
-            }
+            print_and_maybe_open_dashboard(
+                existing.port,
+                &existing.token,
+                existing.remote_url.as_deref(),
+                headless,
+                true,
+            )
+            .await;
             return true;
         }
     }
     false
 }
 
-async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), String> {
-    if try_open_existing_daemon(&ctx).await {
+async fn run_open(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
+    let headless = is_headless_session();
+    if try_open_existing_daemon(&ctx, headless).await {
         return Ok(());
     }
 
-    maybe_bootstrap_podman(no_bootstrap).await;
+    maybe_bootstrap_podman(flags.no_bootstrap).await;
 
     // A background service (e.g. `brew services start pockets`) may have
     // finished binding while we waited for Podman to start.
-    if try_open_existing_daemon(&ctx).await {
+    if try_open_existing_daemon(&ctx, headless).await {
         return Ok(());
     }
 
     let token = server::load_or_create_session_token(&ctx)?;
+    let enable_tailscale = should_enable_tailscale_dashboard(&flags, headless);
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel::<server::DaemonReady>();
     let open_token = token.clone();
     tokio::spawn(async move {
-        if let Ok(bound_port) = rx.await {
-            let url = server::bootstrap_url(bound_port, &open_token);
-            println!(
-                "Pockets dashboard running at {}",
-                server::dashboard_url(bound_port)
-            );
-            println!("Open in any browser: {url}");
+        if let Ok(ready) = rx.await {
+            print_and_maybe_open_dashboard(
+                ready.port,
+                &open_token,
+                ready.remote_url.as_deref(),
+                headless,
+                true,
+            )
+            .await;
             println!("Press Ctrl+C to stop the dashboard daemon (installed Pockets keep running).");
-            if let Err(err) = pockets_core::open_in_browser(&url).await {
-                println!("Could not open default browser automatically ({err})");
-            }
         }
     });
 
-    match server::run_daemon(ctx.clone(), port, None, token, Some(tx)).await {
+    let options = server::DaemonOptions {
+        port: flags.port,
+        dev_origin: flags.dev_origin,
+        public_url: flags.public_url,
+        enable_tailscale,
+        token,
+    };
+    match server::run_daemon(ctx.clone(), options, Some(tx)).await {
         Ok(()) => Ok(()),
         Err(err) => {
             // If another daemon bound the port in the final millisecond, open it
             // cleanly instead of surfacing an `Address already in use` error.
-            if try_open_existing_daemon(&ctx).await {
+            if try_open_existing_daemon(&ctx, headless).await {
                 return Ok(());
             }
             Err(err)
@@ -464,23 +637,26 @@ async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), 
     }
 }
 
-async fn run_serve(
-    ctx: AppContext,
-    port: u16,
-    dev_origin: Option<String>,
-    no_bootstrap: bool,
-) -> Result<(), String> {
+async fn run_serve(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
     let token = server::load_or_create_session_token(&ctx)?;
+    let enable_tailscale = flags.tailscale.unwrap_or(false);
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel::<server::DaemonReady>();
     let print_token = token.clone();
+    let no_bootstrap = flags.no_bootstrap;
     tokio::spawn(async move {
-        if let Ok(bound_port) = rx.await {
-            println!("Pockets daemon listening on http://127.0.0.1:{bound_port}");
+        if let Ok(ready) = rx.await {
+            println!("Pockets daemon listening on http://127.0.0.1:{}", ready.port);
             println!(
-                "Dashboard URL: {}",
-                server::bootstrap_url(bound_port, &print_token)
+                "Local dashboard URL: {}",
+                server::bootstrap_url(ready.port, &print_token)
             );
+            if let Some(remote) = ready.remote_url.as_deref() {
+                println!(
+                    "Remote dashboard URL: {}",
+                    server::bootstrap_url_for(remote, &print_token)
+                );
+            }
             // Bootstrap Podman after the loopback listener is bound so
             // `brew services start pockets && pockets` immediately discovers
             // the running daemon instead of racing to bind port 18786.
@@ -488,12 +664,27 @@ async fn run_serve(
         }
     });
 
-    server::run_daemon(ctx, port, dev_origin, token, Some(tx)).await
+    let options = server::DaemonOptions {
+        port: flags.port,
+        dev_origin: flags.dev_origin,
+        public_url: flags.public_url,
+        enable_tailscale,
+        token,
+    };
+    server::run_daemon(ctx, options, Some(tx)).await
 }
 
 async fn run_doctor(ctx: AppContext, bootstrap: bool) -> Result<(), String> {
     println!("Pockets v{}", pockets_core::APP_VERSION);
     println!("OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+    println!(
+        "Session: {}",
+        if is_headless_session() {
+            "headless / SSH"
+        } else {
+            "desktop"
+        }
+    );
     println!("Data directory: {}", ctx.data_dir().display());
     if let Some(home) = fs_browser::user_home_dir() {
         println!("Home directory: {}", home.display());
@@ -506,11 +697,22 @@ async fn run_doctor(ctx: AppContext, bootstrap: bool) -> Result<(), String> {
     };
     println!("Podman: {:?} — {}", runtime.state, runtime.message);
 
-    let tailscale = pockets_core::detect_tailscale(&ctx).await?;
+    let tailscale_report = pockets_core::detect_tailscale(&ctx).await?;
     println!(
         "Tailscale: {:?} — {} (dns={:?})",
-        tailscale.state, tailscale.message, tailscale.dns_name
+        tailscale_report.state, tailscale_report.message, tailscale_report.dns_name
     );
+
+    if let Some(linger) = service::check_linux_linger().await {
+        if linger {
+            println!("Systemd linger: enabled (daemon & containers survive SSH disconnect)");
+        } else {
+            let user = std::env::var("USER").unwrap_or_else(|_| "$USER".to_owned());
+            println!(
+                "Systemd linger: disabled — run `sudo loginctl enable-linger {user}` so Pockets stays running after SSH disconnect"
+            );
+        }
+    }
 
     if let Some(record) = server::read_daemon_record(&ctx) {
         let alive = server::probe_running_daemon(&record).await;
@@ -520,10 +722,77 @@ async fn run_doctor(ctx: AppContext, bootstrap: bool) -> Result<(), String> {
             record.port,
             record.pid
         );
+        if alive {
+            if let Some(remote) = record.remote_url.as_deref() {
+                println!("Remote dashboard: {remote}");
+            }
+        }
     } else {
         println!("Daemon: not running");
     }
     Ok(())
+}
+
+async fn run_tailscale(ctx: AppContext, action: TailscaleAction, port: u16) -> Result<(), String> {
+    match action {
+        TailscaleAction::Status => {
+            let report = pockets_core::detect_tailscale(&ctx).await?;
+            println!("Tailscale: {:?} — {}", report.state, report.message);
+            if let Some(url) = tailscale::active_port_serve_url(port).await {
+                println!("Dashboard route: active ({url})");
+            } else {
+                println!("Dashboard route: inactive (run `pockets tailscale on` to enable)");
+            }
+            if let Some(portal) = report.portal_url.as_deref() {
+                println!("Pocket launcher: {portal}");
+            }
+            Ok(())
+        }
+        TailscaleAction::On => {
+            let ts_url = tailscale::enable_port_serve(port).await?;
+            let token = server::load_or_create_session_token(&ctx)?;
+            if let Ok(path) = service::service_file_path() {
+                if path.exists() {
+                    let config = service::ServiceConfig {
+                        port,
+                        enable_tailscale: true,
+                        public_url: default_server_flags().public_url,
+                    };
+                    let outcome = service::install(&config).await?;
+                    println!(
+                        "Updated and restarted background service at {} with Tailscale enabled.",
+                        outcome.path.display()
+                    );
+                }
+            }
+            println!("Tailscale dashboard enabled:");
+            println!(
+                "  Sign-in URL (open once): {}",
+                server::bootstrap_url_for(&ts_url, &token)
+            );
+            println!("  Dashboard bookmark:      {ts_url}/");
+            Ok(())
+        }
+        TailscaleAction::Off => {
+            tailscale::disable_port_serve(port).await?;
+            if let Ok(path) = service::service_file_path() {
+                if path.exists() {
+                    let config = service::ServiceConfig {
+                        port,
+                        enable_tailscale: false,
+                        public_url: default_server_flags().public_url,
+                    };
+                    let outcome = service::install(&config).await?;
+                    println!(
+                        "Updated and restarted background service at {} (loopback only).",
+                        outcome.path.display()
+                    );
+                }
+            }
+            println!("Disabled Tailscale HTTPS access for the Pockets dashboard.");
+            Ok(())
+        }
+    }
 }
 
 async fn run_list(ctx: AppContext) -> Result<(), String> {
@@ -639,30 +908,108 @@ fn slugify(name: &str) -> String {
     }
 }
 
-async fn run_service(ctx: AppContext, action: ServiceAction, port: u16) -> Result<(), String> {
+async fn run_service(
+    ctx: AppContext,
+    action: ServiceAction,
+    flags: ServerFlags,
+) -> Result<(), String> {
+    let headless = is_headless_session();
+    let enable_tailscale = should_enable_tailscale_dashboard(&flags, headless);
+    let config = service::ServiceConfig {
+        port: flags.port,
+        enable_tailscale,
+        public_url: flags.public_url.clone(),
+    };
     match action {
         ServiceAction::Print => {
-            print!("{}", service::render_template(port));
+            print!("{}", service::render_template(&config));
             Ok(())
         }
         ServiceAction::Install => {
-            let path = service::install(port).await?;
+            let outcome = service::install(&config).await?;
             let token = server::load_or_create_session_token(&ctx)?;
-            println!("Installed and started background service at {}", path.display());
             println!(
-                "Open once to sign in: {}",
-                server::bootstrap_url(port, &token)
+                "Installed and started background service at {}",
+                outcome.path.display()
             );
-            println!(
-                "After signing in, bookmark {} — it will stay available automatically.",
-                server::dashboard_url(port)
-            );
+            if outcome.linger_enabled == Some(false) {
+                let user = std::env::var("USER").unwrap_or_else(|_| "$USER".to_owned());
+                println!(
+                    "Note: Run once so Pockets stays running after SSH disconnect: sudo loginctl enable-linger {user}"
+                );
+            }
+            // Wait briefly for the freshly started daemon to publish its remote URL if enabled.
+            let mut remote_url = flags.public_url.clone();
+            if enable_tailscale && remote_url.is_none() {
+                for _ in 0..8 {
+                    if let Some(rec) = server::read_daemon_record(&ctx) {
+                        if rec.remote_url.is_some() && server::probe_running_daemon(&rec).await {
+                            remote_url = rec.remote_url;
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                }
+                if remote_url.is_none() {
+                    remote_url = tailscale::active_port_serve_url(flags.port).await;
+                }
+            }
+            print_and_maybe_open_dashboard(
+                flags.port,
+                &token,
+                remote_url.as_deref(),
+                headless,
+                false,
+            )
+            .await;
             Ok(())
         }
         ServiceAction::Uninstall => {
+            let _ = tailscale::disable_port_serve(flags.port).await;
             let path = service::uninstall().await?;
-            println!("Stopped and removed background service at {}", path.display());
+            println!(
+                "Stopped and removed background service at {}",
+                path.display()
+            );
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tailscale_and_public_url_flags() {
+        let cli = parse_cli(&[
+            "serve".to_owned(),
+            "--port".to_owned(),
+            "19000".to_owned(),
+            "--tailscale".to_owned(),
+            "--public-url".to_owned(),
+            "https://pockets.example.com".to_owned(),
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Serve(flags)) => {
+                assert_eq!(flags.port, 19000);
+                assert_eq!(flags.tailscale, Some(true));
+                assert_eq!(
+                    flags.public_url.as_deref(),
+                    Some("https://pockets.example.com")
+                );
+            }
+            _ => panic!("expected Serve command"),
+        }
+
+        let ts_on = parse_cli(&["tailscale".to_owned(), "on".to_owned()]).unwrap();
+        assert!(matches!(
+            ts_on.command,
+            Some(Commands::Tailscale {
+                action: TailscaleAction::On,
+                port: server::DEFAULT_PORT
+            })
+        ));
     }
 }

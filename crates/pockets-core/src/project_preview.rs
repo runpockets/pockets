@@ -50,6 +50,8 @@ pub struct DesktopPreviewStatus {
     status: PreviewStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     api_access: Option<ApiReview>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote_url: Option<String>,
 }
 
 struct PreviewAccess {
@@ -706,6 +708,7 @@ impl PreviewService {
                 .sessions
                 .session(id)
                 .and_then(|session| session.access().pending.clone()),
+            remote_url: None,
         }
     }
 
@@ -839,39 +842,76 @@ pub async fn set_project_preview_network(
     crate::development::set_preview_hosts(&service.store, &project_id, &hosts)
 }
 
+async fn attach_remote_url(
+    ctx: &AppContext,
+    project_id: &str,
+    status: &mut DesktopPreviewStatus,
+    prefer_remote: bool,
+) {
+    if status.status.state == PreviewState::Stopped {
+        ctx.tailscale_preview_shares.clear(project_id).await;
+        return;
+    }
+    if !prefer_remote || status.status.state != PreviewState::Ready {
+        return;
+    }
+    let Some(port) = status
+        .status
+        .url
+        .as_deref()
+        .and_then(crate::pocket::loopback_url_port)
+    else {
+        return;
+    };
+    if let Ok(remote) = ctx.tailscale_preview_shares.ensure(project_id, port).await {
+        status.remote_url = Some(remote);
+    }
+}
+
 pub async fn project_preview_start(
     ctx: &AppContext,
     project_id: String,
+    prefer_remote: bool,
 ) -> Result<DesktopPreviewStatus, String> {
     let service = PreviewService::from_ctx(ctx);
     let _lifecycle = service.controller.lifecycle_guard().await;
-    service.start_locked(project_id).await
+    let mut status = service.start_locked(project_id.clone()).await?;
+    attach_remote_url(ctx, &project_id, &mut status, prefer_remote).await;
+    Ok(status)
 }
 
 pub async fn project_preview_review_api_access(
     ctx: &AppContext,
     project_id: String,
     decision: ApiDecision,
+    prefer_remote: bool,
 ) -> Result<DesktopPreviewStatus, String> {
     let service = PreviewService::from_ctx(ctx);
     let _lifecycle = service.controller.lifecycle_guard().await;
-    service
+    let mut status = service
         .review_api_access_locked(&project_id, decision)
-        .await
+        .await?;
+    attach_remote_url(ctx, &project_id, &mut status, prefer_remote).await;
+    Ok(status)
 }
 
 pub async fn project_preview_status(
     ctx: &AppContext,
     project_id: String,
     cursor: u64,
+    prefer_remote: bool,
 ) -> Result<DesktopPreviewStatus, String> {
     let service = PreviewService::from_ctx(ctx);
     service.store.load(&project_id)?;
-    Ok(service.desktop_status(&project_id, cursor))
+    let mut status = service.desktop_status(&project_id, cursor);
+    attach_remote_url(ctx, &project_id, &mut status, prefer_remote).await;
+    Ok(status)
 }
 
 pub(crate) async fn stop_owned(ctx: &AppContext, id: &str) -> Result<bool, String> {
-    PreviewService::from_ctx(ctx).stop_locked(id).await
+    let stopped = PreviewService::from_ctx(ctx).stop_locked(id).await?;
+    ctx.tailscale_preview_shares.clear(id).await;
+    Ok(stopped)
 }
 
 pub async fn project_preview_stop(ctx: &AppContext, project_id: String) -> Result<bool, String> {
@@ -879,12 +919,38 @@ pub async fn project_preview_stop(ctx: &AppContext, project_id: String) -> Resul
     service.store.load(&project_id)?;
     service.sessions.cancel(&project_id);
     let _lifecycle = service.controller.lifecycle_guard().await;
-    service.stop_locked(&project_id).await
+    let stopped = service.stop_locked(&project_id).await?;
+    ctx.tailscale_preview_shares.clear(&project_id).await;
+    Ok(stopped)
 }
 
-pub async fn project_preview_open(ctx: &AppContext, project_id: String) -> Result<(), String> {
+pub async fn project_preview_open(
+    ctx: &AppContext,
+    project_id: String,
+    open_host_browser: bool,
+    prefer_remote: bool,
+) -> Result<String, String> {
     ctx.store().load(&project_id)?;
-    preview::open(&ctx.previews, &project_id).await
+    let local_url = preview::open_url(&ctx.previews, &project_id)?;
+    let url = if prefer_remote {
+        let port = crate::pocket::loopback_url_port(&local_url)
+            .ok_or_else(|| "The preview does not have a verified loopback port.".to_owned())?;
+        ctx.tailscale_preview_shares
+            .ensure(&project_id, port)
+            .await
+            .map_err(|err| {
+                format!(
+                    "Could not open the live preview remotely over Tailscale ({err}). \
+                     Local preview address on the host is {local_url}."
+                )
+            })?
+    } else {
+        local_url
+    };
+    if open_host_browser {
+        crate::open_in_browser(&url).await?;
+    }
+    Ok(url)
 }
 
 pub async fn project_preview_logs(ctx: &AppContext, project_id: String) -> Result<String, String> {

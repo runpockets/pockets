@@ -77,4 +77,27 @@ describe("api RPC bridge", () => {
     expect(result).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("opens verified URLs returned by open_project and project_preview_open in a new browser tab", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            result: "https://cloud-vm.tail00000.ts.net:41234",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await invoke("project_preview_open", { projectId: "a".repeat(32) });
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://cloud-vm.tail00000.ts.net:41234",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
 });

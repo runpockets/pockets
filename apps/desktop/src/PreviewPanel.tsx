@@ -226,7 +226,7 @@ export default function PreviewPanel({
   useEffect(() => {
     if (projectId === null) return;
     reportBounds();
-  }, [projectId, status?.state, status?.url, reportBounds]);
+  }, [projectId, status?.state, status?.url, status?.remoteUrl, reportBounds]);
 
   // Overlay restore (v3 §9.3): when the last popup closes and App brings
   // the pane back, one fresh report lands it at the rect as it stands now,
@@ -243,7 +243,8 @@ export default function PreviewPanel({
   const bound = projectId !== null;
   const state = status?.state ?? null;
   const failedMessage = status?.error ?? lastEventMessage;
-  const readyUrl = state === "ready" ? status?.url : undefined;
+  const readyUrl =
+    state === "ready" ? (status?.remoteUrl ?? status?.url) : undefined;
   const canOpen = readyUrl !== undefined && !openBusy;
   const stateView = state === null ? null : PREVIEW_STATE_VIEWS[state];
 
