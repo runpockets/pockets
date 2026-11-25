@@ -460,7 +460,29 @@ export default function Versions({
                           </>
                         )}
                         {formatVersionTime(version.installedAtSeconds)}
-                        {!version.first && <Lines changes={version.changes} />}
+                        {version.first ? (
+                          (version.note !== null || version.notes.length > 0) &&
+                          version.files > 0 && (
+                            <>
+                              {" · "}
+                              {version.files === 1
+                                ? "1 file"
+                                : `${version.files} files`}
+                            </>
+                          )
+                        ) : (
+                          <>
+                            {version.changes.length > 0 && (
+                              <>
+                                {" · "}
+                                {version.changes.length === 1
+                                  ? "1 file"
+                                  : `${version.changes.length} files`}
+                              </>
+                            )}
+                            <Lines changes={version.changes} />
+                          </>
+                        )}
                       </span>
                     </span>
                   </>

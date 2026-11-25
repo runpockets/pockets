@@ -185,13 +185,18 @@ describe("Versions", () => {
     expect(items).toHaveLength(3);
     expect(items[0].textContent).toContain("Update app.js and styles.css");
     expect(within(items[0]).getByText("Live")).toBeTruthy();
+    expect(items[0].textContent).toContain("2 files");
     expect(items[0].textContent).toContain("+42");
     expect(items[0].textContent).toContain("−8");
     expect(items[1].textContent).toContain(
       "Add settings.js, update index.html",
     );
+    expect(items[1].textContent).toContain("2 files");
     expect(within(items[1]).queryByText("Live")).toBeNull();
     expect(items[2].textContent).toContain("First version · 11 files");
+    expect(items[2].querySelector(".versions-meta")?.textContent).not.toContain(
+      "11 files",
+    );
     // The first version has nothing to compare with: opening it lists no
     // files, only the note action.
     fireEvent.click(within(items[2]).getByRole("button", { name: /First/ }));
@@ -508,6 +513,27 @@ describe("Version notes", () => {
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual(["Add filters", "Sort by price"]);
+  });
+
+  it("shows file count on the metadata line for a first version with notes", async () => {
+    invokeMock.mockResolvedValue({
+      ...REPORT,
+      versions: [
+        {
+          ...REPORT.versions[2],
+          live: true,
+          notes: ["Initial launch"],
+        },
+      ],
+      pending: null,
+    } satisfies VersionsReport);
+    render(<Versions projectId="p-1" workingDigest="w" installedDigest="i" />);
+    openVersions();
+    const list = await screen.findByRole("list", { name: "Versions" });
+    const item = within(list).getByRole("listitem");
+    expect(item.querySelector(".versions-meta")?.textContent).toContain(
+      "11 files",
+    );
   });
 
   it("saves, edits and clears the owner's note, then refetches", async () => {
