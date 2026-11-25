@@ -401,20 +401,36 @@ async fn run_url(ctx: AppContext) -> Result<(), String> {
     Ok(())
 }
 
-async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), String> {
-    if let Some(existing) = server::read_daemon_record(&ctx) {
+async fn try_open_existing_daemon(ctx: &AppContext) -> bool {
+    if let Some(existing) = server::read_daemon_record(ctx) {
         if server::probe_running_daemon(&existing).await {
             let url = server::bootstrap_url(existing.port, &existing.token);
-            println!("Pockets is already running at {}", server::dashboard_url(existing.port));
+            println!(
+                "Pockets is already running at {}",
+                server::dashboard_url(existing.port)
+            );
             println!("Open in any browser: {url}");
             if let Err(err) = pockets_core::open_in_browser(&url).await {
                 println!("Could not open default browser automatically ({err})");
             }
-            return Ok(());
+            return true;
         }
+    }
+    false
+}
+
+async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), String> {
+    if try_open_existing_daemon(&ctx).await {
+        return Ok(());
     }
 
     maybe_bootstrap_podman(no_bootstrap).await;
+
+    // A background service (e.g. `brew services start pockets`) may have
+    // finished binding while we waited for Podman to start.
+    if try_open_existing_daemon(&ctx).await {
+        return Ok(());
+    }
 
     let token = server::load_or_create_session_token(&ctx)?;
 
@@ -423,7 +439,10 @@ async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), 
     tokio::spawn(async move {
         if let Ok(bound_port) = rx.await {
             let url = server::bootstrap_url(bound_port, &open_token);
-            println!("Pockets dashboard running at {}", server::dashboard_url(bound_port));
+            println!(
+                "Pockets dashboard running at {}",
+                server::dashboard_url(bound_port)
+            );
             println!("Open in any browser: {url}");
             println!("Press Ctrl+C to stop the dashboard daemon (installed Pockets keep running).");
             if let Err(err) = pockets_core::open_in_browser(&url).await {
@@ -432,7 +451,17 @@ async fn run_open(ctx: AppContext, port: u16, no_bootstrap: bool) -> Result<(), 
         }
     });
 
-    server::run_daemon(ctx, port, None, token, Some(tx)).await
+    match server::run_daemon(ctx.clone(), port, None, token, Some(tx)).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            // If another daemon bound the port in the final millisecond, open it
+            // cleanly instead of surfacing an `Address already in use` error.
+            if try_open_existing_daemon(&ctx).await {
+                return Ok(());
+            }
+            Err(err)
+        }
+    }
 }
 
 async fn run_serve(
@@ -441,7 +470,6 @@ async fn run_serve(
     dev_origin: Option<String>,
     no_bootstrap: bool,
 ) -> Result<(), String> {
-    maybe_bootstrap_podman(no_bootstrap).await;
     let token = server::load_or_create_session_token(&ctx)?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -449,7 +477,14 @@ async fn run_serve(
     tokio::spawn(async move {
         if let Ok(bound_port) = rx.await {
             println!("Pockets daemon listening on http://127.0.0.1:{bound_port}");
-            println!("Dashboard URL: {}", server::bootstrap_url(bound_port, &print_token));
+            println!(
+                "Dashboard URL: {}",
+                server::bootstrap_url(bound_port, &print_token)
+            );
+            // Bootstrap Podman after the loopback listener is bound so
+            // `brew services start pockets && pockets` immediately discovers
+            // the running daemon instead of racing to bind port 18786.
+            maybe_bootstrap_podman(no_bootstrap).await;
         }
     });
 
