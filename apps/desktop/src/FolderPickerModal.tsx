@@ -5,6 +5,7 @@ import {
   type DirectoryListing,
   type FolderPickRequest,
 } from "./api";
+import { IconClose, IconFolderOpen } from "./Icons";
 import "./FolderPickerModal.css";
 
 interface ActivePick {
@@ -89,7 +90,17 @@ export default function FolderPickerModal() {
         aria-labelledby="folder-picker-title"
       >
         <div className="folder-picker-header">
-          <h2 id="folder-picker-title">{active.request.title}</h2>
+          <div className="folder-picker-header-top">
+            <h2 id="folder-picker-title">{active.request.title}</h2>
+            <button
+              type="button"
+              className="folder-picker-close"
+              aria-label="Close"
+              onClick={() => close(null)}
+            >
+              <IconClose size={14} />
+            </button>
+          </div>
           <p className="hint">{active.request.description}</p>
         </div>
 
@@ -162,7 +173,17 @@ export default function FolderPickerModal() {
               className="folder-picker-row"
               onClick={() => void loadPath(entry.path, showHidden)}
             >
-              <span className="folder-picker-name">{entry.name}</span>
+              <span className="folder-picker-row-main">
+                <IconFolderOpen
+                  size={14}
+                  className={
+                    entry.hasPocketYaml
+                      ? "folder-picker-icon folder-picker-icon-pocket"
+                      : "folder-picker-icon"
+                  }
+                />
+                <span className="folder-picker-name">{entry.name}</span>
+              </span>
               {entry.hasPocketYaml && (
                 <span className="folder-picker-badge">pocket.yaml</span>
               )}
