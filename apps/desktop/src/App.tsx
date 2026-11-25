@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "./api";
+import AppUpdateModal, { type AppUpdateStatus } from "./AppUpdateModal";
 import AuthGateModal from "./AuthGateModal";
 import FolderPickerModal from "./FolderPickerModal";
 import CreationPanel, {
@@ -402,6 +403,30 @@ export default function App() {
   const [usageByProject, setUsageByProject] = useState<
     Record<string, PocketUsage>
   >({});
+  const [appUpdate, setAppUpdate] = useState<AppUpdateStatus | null>(null);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const checkAppUpdate = useCallback(async (force: boolean) => {
+    setCheckingUpdate(true);
+    try {
+      const status = await invoke<AppUpdateStatus>("check_app_update", {
+        force,
+      });
+      if (status && typeof status.currentVersion === "string") {
+        setAppUpdate(status);
+      }
+    } catch {
+      // Non-fatal: version indicator stays absent if daemon is unreachable.
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!inTauri) return;
+    void checkAppUpdate(false);
+  }, [inTauri, checkAppUpdate]);
 
   const applyResourceSnapshot = useCallback((snapshot: ResourceSnapshot) => {
     const next: Record<string, PocketUsage> = {};
@@ -859,6 +884,8 @@ export default function App() {
                     themeMode={themeMode}
                     onChangeThemeMode={changeThemeMode}
                     onResourceSnapshot={applyResourceSnapshot}
+                    appUpdate={appUpdate}
+                    onOpenAppUpdate={() => setUpdateModalOpen(true)}
                   />
                 </div>
               )}
@@ -1188,6 +1215,13 @@ export default function App() {
           </main>
           <FolderPickerModal />
           <AuthGateModal />
+          <AppUpdateModal
+            open={updateModalOpen}
+            status={appUpdate}
+            checking={checkingUpdate}
+            onClose={() => setUpdateModalOpen(false)}
+            onRecheck={() => void checkAppUpdate(true)}
+          />
         </div>
       </FullscreenProvider>
     </OverlayProvider>

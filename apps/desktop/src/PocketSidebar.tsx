@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "./api";
+import type { AppUpdateStatus } from "./AppUpdateModal";
 import type { PocketCatalog } from "./CreationPanel";
 import { formatBytes, formatPercent } from "./formatBytes";
 import { groupByLineage } from "./projectLineage";
@@ -55,6 +56,10 @@ export interface PocketSidebarProps {
    *  column's existing poll so other views can reuse per-Pocket metrics
    *  without issuing duplicate native `podman stats` calls. */
   onResourceSnapshot?: (snapshot: ResourceSnapshot) => void;
+  /** Optional Pockets app version / update check state surfaced in the
+   *  sidebar footer so users see available updates and can open the modal. */
+  appUpdate?: AppUpdateStatus | null;
+  onOpenAppUpdate?: () => void;
 }
 
 /** Per-Pocket usage record returned by `resource_snapshot`. */
@@ -182,6 +187,8 @@ export default function PocketSidebar({
   themeMode,
   onChangeThemeMode,
   onResourceSnapshot,
+  appUpdate,
+  onOpenAppUpdate,
 }: PocketSidebarProps) {
   const [totals, setTotals] = useState<ResourceTotals | null>(null);
   const onSnapshotRef = useRef(onResourceSnapshot);
@@ -541,6 +548,33 @@ export default function PocketSidebar({
             <span className="pocket-sidebar-theme-label">Theme</span>
             <span className="pocket-sidebar-theme-value">
               {THEME_LABELS[themeMode]}
+            </span>
+          </button>
+        )}
+
+        {appUpdate && onOpenAppUpdate && (
+          <button
+            type="button"
+            className="pocket-sidebar-version"
+            data-update={appUpdate.updateAvailable ? "true" : undefined}
+            aria-label={
+              appUpdate.updateAvailable && appUpdate.latestVersion
+                ? `Pockets v${appUpdate.currentVersion} — update to v${appUpdate.latestVersion} available`
+                : `Pockets v${appUpdate.currentVersion} — check for updates`
+            }
+            title={
+              appUpdate.updateAvailable && appUpdate.latestVersion
+                ? `Update to v${appUpdate.latestVersion} available`
+                : "Check for Pockets updates"
+            }
+            onClick={onOpenAppUpdate}
+          >
+            <span className="pocket-sidebar-version-label">Version</span>
+            <span className="pocket-sidebar-version-value">
+              {`v${appUpdate.currentVersion}`}
+              {appUpdate.updateAvailable && (
+                <span className="pocket-sidebar-version-badge">(update)</span>
+              )}
             </span>
           </button>
         )}

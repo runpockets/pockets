@@ -1,4 +1,12 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=POCKETS_VERSION");
+    let raw_version = std::env::var("POCKETS_VERSION")
+        .ok()
+        .map(|v| v.trim().trim_start_matches('v').to_owned())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+    println!("cargo:rustc-env=POCKETS_APP_VERSION={raw_version}");
+
     // Bundle the same reviewed text starter used by pocket-tools. No Node
     // runtime, repository checkout or template downloads are needed at runtime.
     let template = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())

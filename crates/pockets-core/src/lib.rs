@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
+pub mod app_update;
 pub mod builder;
 pub mod creation;
 pub mod development;
@@ -39,6 +40,10 @@ pub mod source;
 pub mod tailscale;
 pub mod tailscale_portal;
 pub mod versions;
+
+/// Semantic version baked into this Pockets binary (set from the release tag
+/// via `POCKETS_VERSION`, falling back to `CARGO_PKG_VERSION` in local builds).
+pub const APP_VERSION: &str = env!("POCKETS_APP_VERSION");
 
 /// Shared lifecycle lock serializing mutating Podman operations across Pockets.
 #[derive(Clone, Default)]

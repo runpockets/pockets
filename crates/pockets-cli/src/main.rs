@@ -323,7 +323,7 @@ async fn main() {
         return;
     }
     if matches!(cli.command, Some(Commands::Version)) {
-        println!("pockets {}", env!("CARGO_PKG_VERSION"));
+        println!("pockets {}", pockets_core::APP_VERSION);
         return;
     }
 
@@ -457,7 +457,7 @@ async fn run_serve(
 }
 
 async fn run_doctor(ctx: AppContext, bootstrap: bool) -> Result<(), String> {
-    println!("Pockets v{}", env!("CARGO_PKG_VERSION"));
+    println!("Pockets v{}", pockets_core::APP_VERSION);
     println!("OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     println!("Data directory: {}", ctx.data_dir().display());
     if let Some(home) = fs_browser::user_home_dir() {

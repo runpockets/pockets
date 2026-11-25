@@ -47,6 +47,7 @@ jobs:
         shell: bash
         env:
           MACOSX_DEPLOYMENT_TARGET: "13.0"
+          POCKETS_VERSION: ${{ github.ref_name }}
         run: |
           mkdir -p release
           for target in $(echo "${{ matrix.targets }}" | tr ',' ' '); do
@@ -57,6 +58,8 @@ jobs:
       - name: Build and package Windows archive
         if: matrix.archive == 'zip'
         shell: pwsh
+        env:
+          POCKETS_VERSION: ${{ github.ref_name }}
         run: |
           $target = "${{ matrix.targets }}"
           cargo build --release --target $target -p pockets-cli

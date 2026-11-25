@@ -455,7 +455,7 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
     let mut response = match (&method, path.as_str()) {
         (&Method::GET, "/api/health") => json_response(
             StatusCode::OK,
-            json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") }),
+            json!({ "ok": true, "version": pockets_core::APP_VERSION }),
         ),
 
         (&Method::GET, "/auth/bootstrap") => {

@@ -144,8 +144,24 @@ struct BrowseDirectoryArgs {
     show_hidden: bool,
 }
 
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CheckAppUpdateArgs {
+    #[serde(default)]
+    force: bool,
+}
+
 pub async fn dispatch(ctx: &AppContext, command: &str, body: Value) -> Result<Value, String> {
     match command {
+        "check_app_update" => {
+            let args: CheckAppUpdateArgs = if body.is_null() {
+                CheckAppUpdateArgs::default()
+            } else {
+                parse_args(body)?
+            };
+            to_json(pockets_core::app_update::check_for_update(args.force).await)
+        }
+        "apply_app_update" => to_json(pockets_core::app_update::apply_update().await?),
         "get_manifest" => to_json(pockets_core::get_manifest()?),
         "detect_runtime" => to_json(pockets_core::detect_runtime().await),
         "bootstrap_runtime" => to_json(pockets_core::bootstrap_runtime().await),

@@ -390,3 +390,39 @@
   margin-left: auto;
   color: var(--text-2);
 }
+
+.pocket-sidebar-version {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-6) var(--space-10);
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pocket-sidebar-version:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--selected) 50%, var(--chrome));
+  color: var(--text);
+}
+
+.pocket-sidebar-version-value {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pocket-sidebar-version[data-update="true"] .pocket-sidebar-version-value {
+  color: var(--ok);
+}
+
+.pocket-sidebar-version-badge {
+  font-weight: 600;
+}
