@@ -47,14 +47,17 @@ export default function AppUpdateModal({
   onRecheck,
 }: AppUpdateModalProps) {
   const [phase, setPhase] = useState<Phase>("idle");
+  const [updatedTo, setUpdatedTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const busy = phase === "updating" || phase === "restarting";
+  const installedPendingReload = phase === "restart-manual";
 
   useEffect(() => {
     if (!open) {
       setPhase("idle");
+      setUpdatedTo(null);
       setError(null);
       setCopied(false);
     }
@@ -72,11 +75,21 @@ export default function AppUpdateModal({
   }, [open, busy, onClose]);
 
   useEffect(() => {
-    if (phase !== "restarting" || !status?.latestVersion) return;
-    const targetVersion = status.latestVersion;
+    const targetVersion = (updatedTo ?? status?.latestVersion ?? "").replace(
+      /^v/,
+      "",
+    );
+    if (
+      (phase !== "restarting" && phase !== "restart-manual") ||
+      !targetVersion
+    ) {
+      return;
+    }
     let active = true;
     let attempts = 0;
-    const maxAttempts = 20;
+    let timerId: number | null = null;
+    const maxFastAttempts = 15;
+    const intervalMs = phase === "restarting" ? 1000 : 3000;
 
     const poll = async () => {
       if (!active) return;
@@ -85,7 +98,7 @@ export default function AppUpdateModal({
         const res = await fetch("/api/health", { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as { version?: string };
-          if (data.version === targetVersion) {
+          if (data.version?.replace(/^v/, "") === targetVersion) {
             window.location.reload();
             return;
           }
@@ -94,28 +107,29 @@ export default function AppUpdateModal({
         // Expected while the daemon restarts.
       }
       if (!active) return;
-      if (attempts >= maxAttempts) {
+      if (phase === "restarting" && attempts >= maxFastAttempts) {
         setPhase("restart-manual");
         return;
       }
-      window.setTimeout(() => void poll(), 1500);
+      timerId = window.setTimeout(() => void poll(), intervalMs);
     };
 
-    const initialTimer = window.setTimeout(() => void poll(), 1500);
+    timerId = window.setTimeout(() => void poll(), intervalMs);
     return () => {
       active = false;
-      window.clearTimeout(initialTimer);
+      if (timerId !== null) window.clearTimeout(timerId);
     };
-  }, [phase, status?.latestVersion]);
+  }, [phase, updatedTo, status?.latestVersion]);
 
   if (!open || status === null) return null;
 
   async function handleUpdateNow() {
-    if (busy) return;
+    if (busy || installedPendingReload) return;
     setPhase("updating");
     setError(null);
     try {
       const result = await invoke<ApplyUpdateResult>("apply_app_update");
+      setUpdatedTo(result.updatedTo);
       if (result.restarting) {
         setPhase("restarting");
       } else {
@@ -139,12 +153,17 @@ export default function AppUpdateModal({
   }
 
   const hasUpdate = status.updateAvailable && status.latestVersion !== null;
-  const heading = hasUpdate
-    ? "Pockets update available"
-    : "Pockets is up to date";
-  const subtitle = hasUpdate
-    ? `Version v${status.latestVersion} is ready to install.`
-    : `You're running v${status.currentVersion}.`;
+  const targetDisplay = updatedTo ?? status.latestVersion ?? status.currentVersion;
+  const heading = installedPendingReload
+    ? "Update installed"
+    : hasUpdate
+      ? "Pockets update available"
+      : "Pockets is up to date";
+  const subtitle = installedPendingReload
+    ? `Version v${targetDisplay} has been installed.`
+    : hasUpdate
+      ? `Version v${status.latestVersion} is ready to install.`
+      : `You're running v${status.currentVersion}.`;
 
   return (
     <div
@@ -180,7 +199,7 @@ export default function AppUpdateModal({
             {heading}
           </h2>
           <p className="app-update-subtitle">{subtitle}</p>
-          {hasUpdate && (
+          {hasUpdate && !installedPendingReload && (
             <p className="app-update-current">
               Installed: <code>{`v${status.currentVersion}`}</code>
             </p>
@@ -253,7 +272,24 @@ export default function AppUpdateModal({
         )}
 
         <div className="app-update-actions">
-          {hasUpdate ? (
+          {installedPendingReload ? (
+            <>
+              <button
+                type="button"
+                className="app-update-primary"
+                onClick={() => window.location.reload()}
+              >
+                Reload page
+              </button>
+              <button
+                type="button"
+                className="app-update-secondary"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            </>
+          ) : hasUpdate ? (
             <>
               {status.canAutoUpdate && (
                 <button

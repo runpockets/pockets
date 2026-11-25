@@ -135,6 +135,7 @@ struct CachedCheck {
 
 static UPDATE_CACHE: OnceLock<tokio::sync::Mutex<Option<CachedCheck>>> = OnceLock::new();
 static APPLY_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static RESTART_SIGNAL: OnceLock<tokio::sync::watch::Sender<Option<PathBuf>>> = OnceLock::new();
 
 fn update_cache() -> &'static tokio::sync::Mutex<Option<CachedCheck>> {
     UPDATE_CACHE.get_or_init(|| tokio::sync::Mutex::new(None))
@@ -142,6 +143,21 @@ fn update_cache() -> &'static tokio::sync::Mutex<Option<CachedCheck>> {
 
 fn apply_lock() -> &'static tokio::sync::Mutex<()> {
     APPLY_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+fn restart_signal() -> &'static tokio::sync::watch::Sender<Option<PathBuf>> {
+    RESTART_SIGNAL.get_or_init(|| {
+        let (tx, _rx) = tokio::sync::watch::channel(None);
+        tx
+    })
+}
+
+/// Subscribes to in-process daemon restart requests triggered after a
+/// successful self-update. When the watch value transitions to `Some(exe)`,
+/// the daemon releases its listening sockets and `exec`s `exe` in place so
+/// `launchd`, `systemd`, and foreground terminals keep the same PID alive.
+pub fn subscribe_restart() -> tokio::sync::watch::Receiver<Option<PathBuf>> {
+    restart_signal().subscribe()
 }
 
 fn current_install_method() -> InstallMethod {
@@ -260,7 +276,7 @@ pub async fn apply_update() -> Result<ApplyUpdateResult, String> {
         InstallMethod::Binary { exe_path } => {
             upgrade_standalone_binary(&exe_path, &target_version).await?;
             clear_cache().await;
-            schedule_restart(RestartStrategy::ServiceOrExit);
+            schedule_restart(RestartStrategy::Binary { exe_path });
             Ok(ApplyUpdateResult {
                 updated_to: target_version.clone(),
                 restarting: true,
@@ -627,42 +643,36 @@ async fn upgrade_standalone_binary(exe_path: &Path, target_version: &str) -> Res
 
 enum RestartStrategy {
     Homebrew { prefix: PathBuf },
-    ServiceOrExit,
+    Binary { exe_path: PathBuf },
+}
+
+fn resolve_restart_binary(strategy: &RestartStrategy) -> PathBuf {
+    match strategy {
+        RestartStrategy::Homebrew { prefix } => {
+            let opt_bin = prefix.join("opt").join("pockets").join("bin").join("pockets");
+            if opt_bin.is_file() {
+                opt_bin
+            } else {
+                prefix.join("bin").join("pockets")
+            }
+        }
+        RestartStrategy::Binary { exe_path } => exe_path.clone(),
+    }
 }
 
 fn schedule_restart(strategy: RestartStrategy) {
+    let target_exe = resolve_restart_binary(&strategy);
     tokio::spawn(async move {
         // Give the HTTP response a moment to flush cleanly to the browser.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        match strategy {
-            RestartStrategy::Homebrew { prefix } => {
-                if let Some(brew) = find_brew(&prefix) {
-                    let _ = tokio::process::Command::new(brew)
-                        .args(["services", "restart", "pockets"])
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
-                    // Wait briefly for launchd to stop us; if running in
-                    // foreground instead of under brew services, exit cleanly.
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                }
-                std::process::exit(0);
-            }
-            RestartStrategy::ServiceOrExit => {
-                #[cfg(all(unix, not(target_os = "macos")))]
-                {
-                    let _ = tokio::process::Command::new("systemctl")
-                        .args(["--user", "restart", "pockets.service"])
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
-                std::process::exit(0);
-            }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let tx = restart_signal();
+        if tx.receiver_count() > 0 {
+            let _ = tx.send(Some(target_exe));
+            // Give the daemon loop time to close sockets and `exec` in place;
+            // only fall back to exiting if something stalled.
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
+        std::process::exit(0);
     });
 }
 

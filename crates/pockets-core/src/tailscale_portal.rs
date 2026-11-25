@@ -136,7 +136,7 @@ impl TailscalePortal {
     }
 
     /// Stops the portal listener and clears the snapshot.
-    pub(crate) async fn stop(&self) {
+    pub async fn stop(&self) {
         self.update_snapshot(PortalSnapshot::default());
         let mut guard = self.handle.lock().await;
         if let Some(handle) = guard.take() {

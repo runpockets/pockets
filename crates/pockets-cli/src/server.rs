@@ -415,6 +415,14 @@ pub async fn run_daemon(
         });
     }
 
+    let reexec_args = build_reexec_args(
+        ctx.data_dir(),
+        bound_port,
+        options.enable_tailscale,
+        options.public_url.as_deref(),
+        options.dev_origin.as_deref(),
+    );
+
     let state = Arc::new(ServerState {
         ctx: ctx.clone(),
         port: bound_port,
@@ -422,6 +430,9 @@ pub async fn run_daemon(
         dev_origin: options.dev_origin,
         extra_origins,
     });
+
+    let mut restart_rx = pockets_core::app_update::subscribe_restart();
+    let mut restart_exe: Option<PathBuf> = None;
 
     loop {
         tokio::select! {
@@ -448,14 +459,88 @@ pub async fn run_daemon(
                     }
                 });
             }
+            changed = restart_rx.changed() => {
+                if changed.is_ok() {
+                    if let Some(exe) = restart_rx.borrow().clone() {
+                        restart_exe = Some(exe);
+                        break;
+                    }
+                }
+            }
             _ = shutdown_signal() => {
                 break;
             }
         }
     }
 
+    drop(listener);
+    ctx.tailscale_portal.stop().await;
+
+    if let Some(exe) = restart_exe {
+        reexec_updated_daemon(&exe, &reexec_args);
+    }
+
     remove_daemon_record(&ctx, pid);
     Ok(())
+}
+
+fn build_reexec_args(
+    data_dir: &std::path::Path,
+    port: u16,
+    enable_tailscale: bool,
+    public_url: Option<&str>,
+    dev_origin: Option<&str>,
+) -> Vec<std::ffi::OsString> {
+    let mut args = vec![
+        std::ffi::OsString::from("--data-dir"),
+        data_dir.as_os_str().to_os_string(),
+        std::ffi::OsString::from("serve"),
+        std::ffi::OsString::from("--port"),
+        std::ffi::OsString::from(port.to_string()),
+        std::ffi::OsString::from("--no-bootstrap"),
+    ];
+    if enable_tailscale {
+        args.push(std::ffi::OsString::from("--tailscale"));
+    }
+    if let Some(url) = public_url {
+        args.push(std::ffi::OsString::from("--public-url"));
+        args.push(std::ffi::OsString::from(url));
+    }
+    if let Some(origin) = dev_origin {
+        args.push(std::ffi::OsString::from("--dev-origin"));
+        args.push(std::ffi::OsString::from(origin));
+    }
+    args
+}
+
+/// Replaces the current daemon process in place with the newly installed
+/// `pockets` binary so `launchd`, `systemd`, and foreground terminals keep
+/// running the updated version under the same PID without dropping the site.
+fn reexec_updated_daemon(exe: &std::path::Path, args: &[std::ffi::OsString]) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(exe).args(args).exec();
+        eprintln!(
+            "pockets self-update: could not exec {}: {err}",
+            exe.display()
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        if let Err(err) = std::process::Command::new(exe)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            eprintln!(
+                "pockets self-update: could not respawn {}: {err}",
+                exe.display()
+            );
+        }
+    }
 }
 
 async fn shutdown_signal() {
@@ -1094,6 +1179,35 @@ mod tests {
         ));
         assert!(session_cookie_header("abc", true).contains("; Secure;"));
         assert!(!session_cookie_header("abc", false).contains("; Secure;"));
+    }
+
+    #[test]
+    fn reexec_args_preserve_data_dir_port_and_remote_flags() {
+        let args = build_reexec_args(
+            std::path::Path::new("/tmp/pockets-data"),
+            18786,
+            true,
+            Some("https://pockets.example.com"),
+            None,
+        );
+        let strs: Vec<String> = args
+            .into_iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            strs,
+            vec![
+                "--data-dir",
+                "/tmp/pockets-data",
+                "serve",
+                "--port",
+                "18786",
+                "--no-bootstrap",
+                "--tailscale",
+                "--public-url",
+                "https://pockets.example.com",
+            ]
+        );
     }
 
     #[test]

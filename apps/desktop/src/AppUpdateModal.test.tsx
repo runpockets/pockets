@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AppUpdateModal, { type AppUpdateStatus } from "./AppUpdateModal";
 
 const mockInvoke = vi.fn();
@@ -105,5 +105,50 @@ describe("AppUpdateModal", () => {
     expect(screen.getByText("You're running v0.1.0.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(onRecheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces Update now with Reload page if restart polling times out into manual restart", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("daemon restarting")),
+    );
+    mockInvoke.mockResolvedValueOnce({
+      updatedTo: "0.1.1",
+      restarting: true,
+      message: "Updated Pockets to v0.1.1. Restarting the daemon…",
+    });
+
+    try {
+      render(
+        <AppUpdateModal
+          open
+          status={UPDATE_AVAILABLE}
+          checking={false}
+          onClose={vi.fn()}
+          onRecheck={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Update now" }));
+        await Promise.resolve();
+      });
+      expect(screen.getByText("Restarting Pockets…")).toBeTruthy();
+
+      for (let i = 0; i < 16; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+      }
+
+      expect(screen.getByText("Update installed")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Update now" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Reload page" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
