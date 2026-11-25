@@ -60,7 +60,7 @@ Open the Pocket folder in your preferred coding tool and click **Start** in **Wo
 
 ### 3. Own it locally (and reach it from your phone)
 * Each installed Pocket gets a persistent loopback address (`http://<name>.localhost:18788+`) backed by a dedicated Podman named volume.
-* Store plain config and API secrets separately per environment (**Preview** vs **Installed app**) in macOS Keychain or an owner-only (`0600`) local vault on Linux/Windows.
+* Store plain config and API secrets separately per environment (**Preview** vs **Installed app**) in an owner-only (`0600`) local vault inside Pockets' data directory.
 * Export and restore `.tar` data volume backups right from the browser, inspect version diffs, roll back installed versions, and monitor per-Pocket CPU & memory.
 * Toggle **Share on your tailnet** to publish a Pocket privately over HTTPS via `tailscale serve` (plus a port `443` Pocket Launcher and scannable QR code) — containers stay strictly on `127.0.0.1` and `tailscale funnel` is never used.
 

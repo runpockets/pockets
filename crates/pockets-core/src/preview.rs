@@ -1418,11 +1418,14 @@ async fn provision(
         .await
         .is_err()
     {
-        return Err(format!(
-            "the preview image {PREVIEW_IMAGE} is not present. Pull it with \
-             `podman pull {PREVIEW_IMAGE}`, \
-             then start the preview again."
-        ));
+        runtime::run_with_timeout(bin, &["pull", PREVIEW_IMAGE], Duration::from_secs(300))
+            .await
+            .map_err(|err| {
+                format!(
+                    "the preview image {PREVIEW_IMAGE} is not cached and could not be pulled automatically ({err}). \
+                     Check your network connection or run `podman pull {PREVIEW_IMAGE}`, then start the preview again."
+                )
+            })?;
     }
 
     if options.allowed_hosts.is_empty() {
@@ -2494,19 +2497,21 @@ if [ "$1" = "inspect" ]; then printf '{inspect}'; fi"#,
     }
 
     #[tokio::test]
-    async fn start_fails_actionably_when_the_pinned_image_is_absent() {
+    async fn start_pulls_missing_pinned_image_and_fails_actionably_if_pull_fails() {
         let dir = tempfile::TempDir::new().expect("temp ai root");
         let ai_root = dir.path().join("ai");
         starter(&ai_root);
 
-        let script =
-            r#"if [ "$1" = "image" ]; then printf 'Error: image not known\n' >&2; exit 1; fi"#;
+        let script = r#"
+if [ "$1" = "image" ]; then printf 'Error: image not known\n' >&2; exit 1; fi
+if [ "$1" = "pull" ]; then printf 'Error: offline\n' >&2; exit 125; fi
+"#;
         let (bin, record) = fake_podman(dir.path(), script);
         let previews = Previews::default();
 
         let err = start(&ai_root, &bin, SESSION, &previews)
             .await
-            .expect_err("a missing pinned image must stop provisioning");
+            .expect_err("a missing pinned image whose pull fails must stop provisioning");
         assert!(err.contains(PREVIEW_IMAGE), "{err}");
         assert!(
             err.contains("podman pull"),
@@ -2516,8 +2521,11 @@ if [ "$1" = "inspect" ]; then printf '{inspect}'; fi"#,
         let calls = invocations(&record);
         assert_eq!(
             calls,
-            vec![format!("image exists {PREVIEW_IMAGE}")],
-            "no network, volume, or container work before the precondition passes"
+            vec![
+                format!("image exists {PREVIEW_IMAGE}"),
+                format!("pull {PREVIEW_IMAGE}"),
+            ],
+            "no network, volume, or container work before the pinned image is present"
         );
         let status = status(&previews, SESSION, 0).expect("entry exists");
         assert_eq!(status.state, PreviewState::Failed);

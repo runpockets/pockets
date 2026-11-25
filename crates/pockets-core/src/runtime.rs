@@ -274,7 +274,7 @@ pub async fn bootstrap_runtime() -> DetectionReport {
     detect_runtime().await
 }
 
-async fn run_with_timeout(
+pub(crate) async fn run_with_timeout(
     bin: &Path,
     args: &[&str],
     timeout: Duration,

@@ -73,7 +73,7 @@ impl BuildJobs {
 
     /// Registers a fresh job for `id`, replacing any earlier job's
     /// handle so a re-issued build can never inherit a stale log.
-    fn begin(&self, id: &str) -> BuildProgressHandle {
+    pub(crate) fn begin(&self, id: &str) -> BuildProgressHandle {
         let handle = BuildProgressHandle::new();
         self.progress
             .lock()
@@ -207,15 +207,25 @@ pub async fn build_project(ctx: &AppContext, id: String) -> Result<projects::Pro
             .map_err(|_| blocking_failed("syncing your Pocket's source"))??
     };
     project.manifest.validate_host()?;
+    let bin = crate::require_podman()?;
     let updating = project.installed.is_some();
     if updating {
         if !project.has_pending_changes() {
-            return Err("This Pocket already has its current source installed.".into());
+            let image_present = match project.installed.as_ref() {
+                Some(installed) => {
+                    crate::runtime::run(&bin, &["image", "exists", &installed.image_id])
+                        .await
+                        .is_ok()
+                }
+                None => false,
+            };
+            if image_present {
+                return Err("This Pocket already has its current source installed.".into());
+            }
         }
     } else {
         guard_buildable(&project)?;
     }
-    let bin = crate::require_podman()?;
     let progress = ctx.build_jobs.begin(&project.id);
     let result = if updating {
         async {

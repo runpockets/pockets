@@ -1,6 +1,10 @@
 //! Host-only runtime settings, keyed by native Pocket ID and environment.
 //!
-//! Each environment is saved atomically in one Keychain item.
+//! Each environment is saved atomically in an owner-only (`0700` dir / `0600`
+//! file) local vault inside Pockets' data directory so secrets survive unsigned
+//! binary upgrades (e.g. Homebrew) and background service restarts cleanly. On
+//! macOS, readable legacy Keychain items are transparently migrated into the
+//! local vault on first read and cleaned up best-effort on write/delete.
 
 use std::collections::BTreeMap;
 
@@ -135,12 +139,10 @@ mod macos {
     }
 }
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 struct FileVault {
     root: std::path::PathBuf,
 }
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 impl FileVault {
     fn for_store(store: &crate::projects::Store) -> Self {
         let base = store.root().parent().unwrap_or_else(|| store.root());
@@ -225,53 +227,61 @@ impl Credentials for FileVault {
     }
 }
 
-enum PlatformCredentials {
-    #[cfg(target_os = "macos")]
-    MacKeychain(Keychain),
-    #[cfg(not(target_os = "macos"))]
-    Vault(FileVault),
+struct PlatformCredentials {
+    vault: FileVault,
 }
 
 impl PlatformCredentials {
     fn for_store(store: &crate::projects::Store) -> Self {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = store;
-            Self::MacKeychain(Keychain)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            Self::Vault(FileVault::for_store(store))
+        Self {
+            vault: FileVault::for_store(store),
         }
     }
 }
 
 impl Credentials for PlatformCredentials {
     fn get(&self, account: &str) -> Result<Option<Vec<u8>>, String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::MacKeychain(k) => k.get(account),
-            #[cfg(not(target_os = "macos"))]
-            Self::Vault(v) => v.get(account),
+        if let Some(bytes) = self.vault.get(account)? {
+            return Ok(Some(bytes));
         }
+        #[cfg(target_os = "macos")]
+        {
+            match Keychain.get(account) {
+                Ok(Some(bytes)) => {
+                    // Migrate readable legacy Keychain items into the owner-only
+                    // FileVault so future unsigned binary upgrades never lose access.
+                    let _ = self.vault.set(account, &bytes);
+                    return Ok(Some(bytes));
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    // Unsigned Homebrew/CLI upgrades change the binary's ad-hoc
+                    // signature, causing Keychain to return -25244 / -25308 for
+                    // items created by an older version. Never brick the Pocket
+                    // or block deletion when a legacy item is inaccessible.
+                    eprintln!("pockets: skipping inaccessible legacy macOS Keychain entry ({account}): {err}");
+                }
+            }
+        }
+        Ok(None)
     }
 
     fn set(&self, account: &str, bytes: &[u8]) -> Result<(), String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::MacKeychain(k) => k.set(account, bytes),
-            #[cfg(not(target_os = "macos"))]
-            Self::Vault(v) => v.set(account, bytes),
+        self.vault.set(account, bytes)?;
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Keychain.remove(account);
         }
+        Ok(())
     }
 
     fn remove(&self, account: &str) -> Result<(), String> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::MacKeychain(k) => k.remove(account),
-            #[cfg(not(target_os = "macos"))]
-            Self::Vault(v) => v.remove(account),
+        self.vault.remove(account)?;
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Keychain.remove(account);
         }
+        Ok(())
     }
 }
 
@@ -632,5 +642,35 @@ mod tests {
         .unwrap();
         assert!(!error.contains("fixture-credential"));
         assert_eq!(keychain.get(&account).unwrap().unwrap(), invalid);
+    }
+
+    #[test]
+    fn file_vault_persists_atomically_with_owner_only_permissions_and_clears_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::projects::Store::new(dir.path().join("projects"));
+        let vault = FileVault::for_store(&store);
+        let account = Environment::Installed.account(&"5".repeat(32));
+
+        assert!(vault.get(&account).unwrap().is_none());
+        vault.set(&account, b"{\"version\":1,\"variables\":{}}").unwrap();
+        assert_eq!(
+            vault.get(&account).unwrap().as_deref(),
+            Some(&b"{\"version\":1,\"variables\":{}}"[..])
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = vault.entry_path(&account).unwrap();
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            let dir_mode = std::fs::metadata(&vault.root).unwrap().permissions().mode() & 0o777;
+            assert_eq!(dir_mode, 0o700);
+        }
+
+        vault.remove(&account).unwrap();
+        assert!(vault.get(&account).unwrap().is_none());
+        // Removing an already-absent item is idempotent.
+        vault.remove(&account).unwrap();
     }
 }

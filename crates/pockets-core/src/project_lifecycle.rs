@@ -118,14 +118,55 @@ pub async fn start_project(ctx: &AppContext, id: String) -> Result<PocketView, S
     let bin = require_podman()?;
     let mut serializing = ctx.controller.lifecycle_guard().await;
     let project = store.load(&id)?;
-    let target = managed_target(&project, require_built(&project)?)?;
+    let image_id = require_built(&project)?;
+    let target = managed_target(&project, image_id)?;
     let current = pocket::inspect_target(&bin, &target).await?;
     let view = if current.state == PocketState::Running {
         finish_start(&bin, &project, &target, current).await?
     } else {
-        // Keychain can show an OS prompt. Leave other runtime operations
-        // available while it resolves; start reloads the authoritative record.
-        drop(serializing);
+        // If Podman was reinstalled, reset, or pruned, the pinned built image
+        // may be missing. Detect that up front (before secret-masked `podman run`)
+        // and rebuild transparently from the installed snapshot when there are
+        // no unapproved working edits.
+        let image_exists = crate::runtime::run(&bin, &["image", "exists", image_id])
+            .await
+            .is_ok();
+        if !image_exists {
+            if project.has_pending_changes() {
+                return Err(
+                    "This Pocket's built image is missing from Podman (for example after \
+                     reinstalling or resetting Podman). Click Update to rebuild it from your \
+                     current source."
+                        .to_owned(),
+                );
+            }
+            drop(serializing);
+            let Some(_build_guard) = ctx.build_jobs.try_claim() else {
+                return Err(
+                    "This Pocket's image needs to be rebuilt, and another Pocket is building right now. \
+                     Wait for that build to finish and click Open again."
+                        .to_owned(),
+                );
+            };
+            let progress = ctx.build_jobs.begin(&project.id);
+            let rebuilt = async {
+                let candidate =
+                    crate::creation::build_candidate_image(&store, &bin, &project.id, &progress)
+                        .await?;
+                let _rebuild_lock = ctx.controller.lifecycle_guard().await;
+                crate::project_updates::apply_candidate(&store, &bin, candidate).await
+            }
+            .await;
+            if let Err(err) = rebuilt {
+                progress.fail(&err);
+                return Err(format!(
+                    "This Pocket's built image was missing from Podman and could not be rebuilt automatically: {err}"
+                ));
+            }
+        } else {
+            // Keychain / vault reads happen outside the lifecycle lock.
+            drop(serializing);
+        }
         let values = crate::runtime_settings::launch_values(
             &store,
             &id,

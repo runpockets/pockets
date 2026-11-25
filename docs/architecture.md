@@ -23,8 +23,7 @@ Pockets ships as a single cross-platform Rust binary (`pockets`, built from `cra
 ## Cross-Platform Runtime Secrets
 
 - Per-Pocket runtime variables and secrets are stored separately for **Preview** and **Installed** environments.
-- On macOS, secrets are stored in macOS Keychain (`security-framework`).
-- On Linux and Windows, secrets are stored in an owner-only (`0700` dir / `0600` file, atomic write) local vault inside Pockets' data directory.
+- On macOS, Linux, and Windows, secrets are stored in an owner-only (`0700` dir / `0600` file, atomic write) local vault inside Pockets' data directory so secrets survive unsigned CLI/Homebrew upgrades and background service restarts cleanly (on macOS, readable legacy Keychain items are transparently migrated into the vault on first read).
 - Secrets are injected into Podman via stdin/scoped engine secrets — never written into snapshots, build contexts, manifests, or container CLI arguments.
 
 ## Private Tailnet Access via Tailscale Serve
