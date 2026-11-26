@@ -47,6 +47,7 @@ const FORBIDDEN_CREDENTIAL_EXTS = new Set([".pem", ".key", ".p12", ".pfx"]);
 const ALLOWED_CATALOG_ENTRY_KEYS = new Set(["repo", "name", "description", "verified", "ref"]);
 
 const STARTER_PLACEHOLDER_DESCRIPTIONS = [
+  "a small persistent web app you control",
   "a minimal pocket starter",
   "minimal hello pocket",
   "starter pocket",

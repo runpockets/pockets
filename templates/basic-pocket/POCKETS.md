@@ -80,3 +80,20 @@ VM, pull images or change host runtime configuration as a side effect of edits.
 
 The README documents optional local/container commands. Report the changes,
 checks performed and any runtime limitations when handing back to the user.
+
+## Publishing to Pockets Hub (optional)
+
+If the user plans to publish this Pocket to GitHub and submit it to Pockets Hub:
+
+- Update `metadata.description` in `pocket.yaml` with a clear one-line summary
+  of the app (this text is shown on both Hub cards and Live Pocket cards).
+- For pure dependency-free Node apps with no native binaries, declare
+  `architectures: [arm64, amd64]` in `pocket.yaml` so both Apple Silicon and
+  Linux/Intel users can pull and build it.
+- Replace the starter `README.md` with documentation for this app and update
+  (or replace) `LICENSE`.
+- Keep the final `USER` in `Containerfile` non-root (`USER node`), avoid
+  `curl | sh` or hardcoded `ENV` secrets, and never commit `.env` or key files.
+- *Optional (suggested):* add a browser-tab icon (`public/favicon.svg` or a
+  `<link rel="icon">` tag) so the Pocket displays a custom logo on Live Pocket
+  cards and browser tabs.

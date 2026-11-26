@@ -70,13 +70,18 @@ test("rejects YAML anchors, unknown fields, reserved env vars, and private hosts
   assert.equal(hostRes.ok, false);
   assert.ok(hostRes.errors.some((e) => e.includes("public hostname")));
 
-  const withPlaceholder = VALID_MANIFEST.replace(
-    "Self-hosted cryptocurrency portfolio and price tracker.",
+  for (const placeholder of [
     "A minimal Pocket starter",
-  );
-  const phRes = validatePocketManifest(withPlaceholder);
-  assert.equal(phRes.ok, false);
-  assert.ok(phRes.errors.some((e) => e.includes("placeholder")));
+    "A small persistent web app you control.",
+  ]) {
+    const withPlaceholder = VALID_MANIFEST.replace(
+      "Self-hosted cryptocurrency portfolio and price tracker.",
+      placeholder,
+    );
+    const phRes = validatePocketManifest(withPlaceholder);
+    assert.equal(phRes.ok, false);
+    assert.ok(phRes.errors.some((e) => e.includes("placeholder")));
+  }
 });
 
 test("Containerfile audit enforces non-root USER and blocks dangerous instructions", () => {

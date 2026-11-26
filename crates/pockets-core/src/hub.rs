@@ -384,6 +384,7 @@ const FORBIDDEN_SECRET_FILES: &[&str] = &[
 ];
 const FORBIDDEN_SECRET_EXTS: &[&str] = &["pem", "key", "p12", "pfx"];
 const STARTER_PLACEHOLDER_DESCS: &[&str] = &[
+    "a small persistent web app you control",
     "a minimal pocket starter",
     "minimal hello pocket",
     "starter pocket",
