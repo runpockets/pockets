@@ -360,16 +360,17 @@ pub(crate) async fn run(bin: &Path, args: &[&str]) -> Result<Output, String> {
 }
 
 /// Run a runtime command and stream its stdout directly into `destination` via
-/// a sibling temporary file, atomically replacing `destination` only after the
-/// command succeeds. Cleans up the temp file on any spawn, I/O, timeout, or
-/// non-zero exit error so a failed export never leaves a half-written backup.
+/// a sibling temporary file with owner-only (`0600` on Unix) permissions,
+/// atomically replacing `destination` only after the command succeeds. Cleans
+/// up the temp file on any spawn, I/O, size-limit, timeout, or non-zero exit
+/// error so a failed export never leaves a half-written backup.
 pub(crate) async fn run_to_file(
     bin: &Path,
     args: &[&str],
     destination: &Path,
     timeout: Duration,
+    max_bytes: Option<u64>,
 ) -> Result<(), String> {
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let label = command_label(bin, args);
@@ -377,13 +378,10 @@ pub(crate) async fn run_to_file(
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
         .ok_or_else(|| "Could not determine the destination folder for the backup.".to_owned())?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
     let temp_path = parent.join(format!(
-        ".pockets-export-{}-{stamp}.tmp",
-        std::process::id()
+        ".pockets-export-{}-{}.tmp",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
     ));
 
     let mut command = Command::new(bin);
@@ -406,22 +404,73 @@ pub(crate) async fn run_to_file(
         .take()
         .ok_or_else(|| format!("{label} did not expose stderr."))?;
 
-    let mut file = tokio::fs::File::create(&temp_path)
+    let mut open_opts = tokio::fs::OpenOptions::new();
+    open_opts.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        open_opts.mode(0o600);
+    }
+    let mut file = open_opts
+        .open(&temp_path)
         .await
         .map_err(|err| format!("Could not create the backup file: {err}"))?;
 
     let work = async {
-        let copy = tokio::io::copy(&mut stdout, &mut file);
-        let read_err = async {
+        let err_task = tokio::spawn(async move {
             let mut buf = Vec::new();
-            let _ = stderr.read_to_end(&mut buf).await;
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = stderr.read(&mut chunk).await {
+                if n == 0 {
+                    break;
+                }
+                if buf.len() < MAX_USER_MESSAGE_BYTES * 2 {
+                    let take = (MAX_USER_MESSAGE_BYTES * 2 - buf.len()).min(n);
+                    buf.extend_from_slice(&chunk[..take]);
+                }
+            }
             buf
-        };
-        let (copy_res, err_bytes) = tokio::join!(copy, read_err);
+        });
+
+        let copy_res: Result<u64, String> = async {
+            let mut buf = vec![0u8; 64 * 1024];
+            let mut written: u64 = 0;
+            loop {
+                let n = stdout
+                    .read(&mut buf)
+                    .await
+                    .map_err(|err| format!("Could not read exported backup data: {err}"))?;
+                if n == 0 {
+                    break;
+                }
+                let next = written.saturating_add(n as u64);
+                if let Some(limit) = max_bytes {
+                    if next > limit {
+                        return Err(format!(
+                            "Backup archive exceeds the maximum supported size of {limit} bytes."
+                        ));
+                    }
+                }
+                file.write_all(&buf[..n])
+                    .await
+                    .map_err(|err| format!("Could not write the backup file: {err}"))?;
+                written = next;
+            }
+            Ok(written)
+        }
+        .await;
+
+        if let Err(err) = copy_res {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            err_task.abort();
+            return Err(err);
+        }
+
         let status = child
             .wait()
             .await
             .map_err(|err| format!("{label} failed while finishing: {err}"))?;
+        let err_bytes = err_task.await.unwrap_or_default();
         if !status.success() {
             let output = Output {
                 status,
@@ -430,7 +479,6 @@ pub(crate) async fn run_to_file(
             };
             return Err(failure_message(&label, &output));
         }
-        copy_res.map_err(|err| format!("Could not write the backup file: {err}"))?;
         file.flush()
             .await
             .map_err(|err| format!("Could not flush the backup file: {err}"))?;

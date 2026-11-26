@@ -3,7 +3,7 @@
 // opens the authenticated dev dashboard URL once both are ready, and tears down
 // both process groups cleanly on Ctrl+C.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import process from "node:process";
 
 const args = process.argv.slice(2);
@@ -108,15 +108,50 @@ const web = spawn(npmBin, ["run", "dev:web"], {
 
 const children = [daemon, web];
 let shuttingDown = false;
-let devUrl = null;
+let daemonReady = false;
 let viteReady = false;
 let opened = false;
 
+function fetchDevBootstrapUrl() {
+  return new Promise((resolve, reject) => {
+    const urlArgs = ["run", "--quiet", "-p", "pockets-cli", "--"];
+    if (dataDir) {
+      urlArgs.push("--data-dir", dataDir);
+    }
+    urlArgs.push("url", "--origin", "http://localhost:1420");
+    execFile("cargo", urlArgs, { encoding: "utf8" }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(stderr.trim() || err.message));
+        return;
+      }
+      const line = stdout
+        .split(/\r?\n/)
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("http://localhost:1420/auth/bootstrap?code="));
+      if (!line) {
+        reject(new Error("`pockets url` did not return a dev sign-in URL."));
+        return;
+      }
+      resolve(line);
+    });
+  });
+}
+
 function maybeOpen() {
-  if (!autoOpen || opened || !devUrl || !viteReady) return;
+  if (!autoOpen || opened || !daemonReady || !viteReady) return;
   opened = true;
-  console.log(`${tag("dev", 32)} Opening http://localhost:1420/ in browser…`);
-  openBrowser(devUrl);
+  fetchDevBootstrapUrl()
+    .then((devUrl) => {
+      if (shuttingDown) return;
+      console.log(`${tag("dev", 32)} Opening http://localhost:1420/ in browser…`);
+      openBrowser(devUrl);
+    })
+    .catch((err) => {
+      if (shuttingDown) return;
+      console.error(
+        `${tag("dev", 31)} Could not mint dev sign-in URL (${err.message}). Run \`cargo run -p pockets-cli -- url --origin http://localhost:1420\` manually.`,
+      );
+    });
 }
 
 function terminate(child, signal) {
@@ -169,11 +204,8 @@ const daemonTag = tag("daemon", 36);
 const webTag = tag("web", 35);
 
 pipePrefixed(daemon.stdout, daemonTag, process.stdout, (line) => {
-  const match = line.match(
-    /^Dev dashboard URL:\s*(http:\/\/localhost:1420\/auth\/bootstrap\?token=\S+)/,
-  );
-  if (match) {
-    devUrl = match[1];
+  if (/^Pockets daemon listening on http:\/\/127\.0\.0\.1:\d+/.test(line)) {
+    daemonReady = true;
     maybeOpen();
   }
 });

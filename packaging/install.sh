@@ -61,13 +61,50 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-URL="https://github.com/$REPO/releases/download/$VERSION/pockets-$VERSION-$TARGET.tar.gz"
+ARCHIVE_NAME="pockets-$VERSION-$TARGET.tar.gz"
+URL="https://github.com/$REPO/releases/download/$VERSION/$ARCHIVE_NAME"
+SUMS_URL="https://github.com/$REPO/releases/download/$VERSION/SHA256SUMS.txt"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Downloading Pockets $VERSION ($TARGET)..."
-curl -fsSL "$URL" -o "$TMP_DIR/pockets.tar.gz"
-tar -xzf "$TMP_DIR/pockets.tar.gz" -C "$TMP_DIR"
+curl -fsSL "$URL" -o "$TMP_DIR/$ARCHIVE_NAME"
+curl -fsSL "$SUMS_URL" -o "$TMP_DIR/SHA256SUMS.txt"
+
+EXPECTED_SHA="$(awk -v name="$ARCHIVE_NAME" '
+  NF >= 2 {
+    file = $2
+    sub(/^\*/, "", file)
+    if (file == name && length($1) == 64 && $1 ~ /^[0-9A-Fa-f]+$/) {
+      print tolower($1)
+      exit
+    }
+  }
+' "$TMP_DIR/SHA256SUMS.txt")"
+
+if [ -z "$EXPECTED_SHA" ]; then
+  echo "Could not find a valid SHA-256 checksum for $ARCHIVE_NAME in SHA256SUMS.txt." >&2
+  exit 1
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA="$(sha256sum "$TMP_DIR/$ARCHIVE_NAME" | awk '{print tolower($1)}')"
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA="$(shasum -a 256 "$TMP_DIR/$ARCHIVE_NAME" | awk '{print tolower($1)}')"
+else
+  echo "Neither sha256sum nor shasum is available to verify $ARCHIVE_NAME." >&2
+  exit 1
+fi
+
+if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+  echo "Checksum mismatch for $ARCHIVE_NAME!" >&2
+  echo "  expected: $EXPECTED_SHA" >&2
+  echo "  actual:   $ACTUAL_SHA" >&2
+  exit 1
+fi
+
+echo "Verified SHA-256 checksum for $ARCHIVE_NAME."
+tar -xzf "$TMP_DIR/$ARCHIVE_NAME" -C "$TMP_DIR"
 
 mkdir -p "$INSTALL_DIR"
 install -m 0755 "$TMP_DIR/pockets" "$INSTALL_DIR/pockets"

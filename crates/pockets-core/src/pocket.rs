@@ -589,12 +589,29 @@ pub async fn has_owned_volume(bin: &Path, target: &Target) -> Result<bool, Strin
     volume_exists(bin, target, "export").await
 }
 
+/// Maximum supported backup archive size shared symmetrically across export
+/// and restore (4 GiB).
+pub const MAX_BACKUP_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Timeout for Podman volume export and import transfers (10 minutes to
+/// accommodate multi-GiB archives over local or VM-backed storage).
+const BACKUP_TRANSFER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// Exports the target's Pockets-owned Podman volume as a tar archive written
-/// atomically to `destination`.
+/// atomically to `destination` with owner-only (`0600` on Unix) permissions.
 ///
-/// Refuses a missing volume with an actionable error and refuses any foreign
-/// volume claiming the managed name.
+/// Refuses a missing volume with an actionable error, refuses any foreign
+/// volume claiming the managed name, and enforces [`MAX_BACKUP_ARCHIVE_BYTES`].
 pub async fn export_volume(bin: &Path, target: &Target, destination: &Path) -> Result<(), String> {
+    export_volume_with_limit(bin, target, destination, Some(MAX_BACKUP_ARCHIVE_BYTES)).await
+}
+
+async fn export_volume_with_limit(
+    bin: &Path,
+    target: &Target,
+    destination: &Path,
+    max_bytes: Option<u64>,
+) -> Result<(), String> {
     if !volume_exists(bin, target, "export").await? {
         return Err(
             "This Pocket has no saved data volume yet. Start it at least once before exporting a backup."
@@ -605,7 +622,8 @@ pub async fn export_volume(bin: &Path, target: &Target, destination: &Path) -> R
         bin,
         &["volume", "export", &target.volume()],
         destination,
-        std::time::Duration::from_secs(60),
+        BACKUP_TRANSFER_TIMEOUT,
+        max_bytes,
     )
     .await
 }
@@ -638,6 +656,11 @@ fn validate_tar_backup(source: &Path) -> Result<(), String> {
     }
     if meta.len() < 512 {
         return Err("The selected file is not a valid Pocket backup (.tar archive).".to_owned());
+    }
+    if meta.len() > MAX_BACKUP_ARCHIVE_BYTES {
+        return Err(format!(
+            "The selected backup archive exceeds the maximum supported size of {MAX_BACKUP_ARCHIVE_BYTES} bytes."
+        ));
     }
     let mut file = std::fs::File::open(source)
         .map_err(|err| format!("Could not open the selected backup file: {err}"))?;
@@ -678,29 +701,31 @@ fn validate_tar_backup(source: &Path) -> Result<(), String> {
 }
 
 /// Restores one managed project's Podman data volume from a `.tar` backup
-/// archive. Stops and removes the owned container first so open files do not
-/// conflict, replaces the volume cleanly (avoiding leftover stale files), and
-/// rolls back to a temporary snapshot of the previous volume if `podman volume
-/// import` fails.
+/// archive. Stops and removes the owned container first so writes are quiesced
+/// before taking an owner-only rollback snapshot, replaces the volume cleanly
+/// (avoiding leftover stale files), and rolls back to the snapshot if `podman
+/// volume import` fails. If rollback itself fails, the rollback snapshot is
+/// preserved on disk and its path is included in the returned error.
 pub async fn restore_volume(bin: &Path, target: &Target, source: &Path) -> Result<(), String> {
     reject_bundled_removal(target)?;
     validate_tar_backup(source)?;
     let had_volume = volume_exists(bin, target, "restore").await?;
 
+    // Quiesce container writes before exporting the pre-restore snapshot.
+    remove_target(bin, target).await?;
+
     let rollback_path = if had_volume {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0);
         let temp = std::env::temp_dir().join(format!(
-            "pockets-restore-rollback-{}-{stamp}.tar",
-            std::process::id()
+            "pockets-restore-rollback-{}-{}.tar",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
         ));
         runtime::run_to_file(
             bin,
             &["volume", "export", &target.volume()],
             &temp,
-            std::time::Duration::from_secs(60),
+            BACKUP_TRANSFER_TIMEOUT,
+            None,
         )
         .await
         .map_err(|err| format!("Could not snapshot existing data before restoring: {err}"))?;
@@ -710,14 +735,13 @@ pub async fn restore_volume(bin: &Path, target: &Target, source: &Path) -> Resul
     };
 
     let restore_result = async {
-        remove_target(bin, target).await?;
         remove_volume(bin, target).await?;
         ensure_data_volume(bin, target).await?;
         runtime::run_from_file(
             bin,
             &["volume", "import", &target.volume(), "-"],
             source,
-            std::time::Duration::from_secs(60),
+            BACKUP_TRANSFER_TIMEOUT,
         )
         .await
     }
@@ -725,18 +749,32 @@ pub async fn restore_volume(bin: &Path, target: &Target, source: &Path) -> Resul
 
     if let Err(err) = restore_result {
         if let Some(backup) = rollback_path.as_deref() {
-            // Best-effort rollback so a failed import does not discard prior data.
-            let _ = remove_volume(bin, target).await;
-            if ensure_data_volume(bin, target).await.is_ok() {
-                let _ = runtime::run_from_file(
+            let rollback_result: Result<(), String> = async {
+                remove_volume(bin, target).await?;
+                ensure_data_volume(bin, target).await?;
+                runtime::run_from_file(
                     bin,
                     &["volume", "import", &target.volume(), "-"],
                     backup,
-                    std::time::Duration::from_secs(60),
+                    BACKUP_TRANSFER_TIMEOUT,
                 )
-                .await;
+                .await
             }
-            let _ = tokio::fs::remove_file(backup).await;
+            .await;
+
+            match rollback_result {
+                Ok(()) => {
+                    let _ = tokio::fs::remove_file(backup).await;
+                    return Err(err);
+                }
+                Err(rollback_err) => {
+                    return Err(format!(
+                        "Backup restore failed ({err}), and automatic rollback also failed ({rollback_err}). \
+                         Your previous data snapshot has been preserved for manual recovery at: {}",
+                        backup.display()
+                    ));
+                }
+            }
         }
         return Err(err);
     }
@@ -2183,8 +2221,18 @@ exit 0
             tar_bytes
         );
         let calls = invocations(&record);
-        assert!(calls.contains(&format!("volume export {MANAGED_VOLUME}")));
-        assert!(calls.contains(&format!("rm -f {ID}")));
+        let rm_idx = calls
+            .iter()
+            .position(|line| line == &format!("rm -f {ID}"))
+            .expect("container removed");
+        let export_idx = calls
+            .iter()
+            .position(|line| line == &format!("volume export {MANAGED_VOLUME}"))
+            .expect("rollback snapshot exported");
+        assert!(
+            rm_idx < export_idx,
+            "container must be stopped/removed before exporting rollback snapshot: {calls:?}"
+        );
         assert!(calls.contains(&format!("volume rm {MANAGED_VOLUME}")));
         assert!(calls.contains(&format!(
             "volume create --label {OWNERSHIP_LABEL}={MANAGED_OWNERSHIP} {MANAGED_VOLUME}"
@@ -2244,6 +2292,162 @@ exit 0
             std::fs::read(&rollback_capture).expect("rollback should have re-imported"),
             b"previous-volume-bytes"
         );
+    }
+
+    #[tokio::test]
+    async fn restore_volume_preserves_owner_only_rollback_archive_when_rollback_also_fails() {
+        let dir = tempfile::TempDir::new().expect("temp fixture dir");
+        let tar_path = dir.path().join("backup.tar");
+        std::fs::write(&tar_path, minimal_valid_tar()).expect("write tar");
+        let attempt_flag = dir.path().join("attempted");
+        let removed_flag = dir.path().join("removed");
+
+        let script = [
+            format!(
+                r#"if [ "$1" = "ps" ]; then printf '{}'; fi"#,
+                managed_ps_row()
+            ),
+            format!(
+                r#"if [ "$1" = "inspect" ]; then printf '{}'; fi"#,
+                managed_inspect_json(Some(MANAGED_OWNERSHIP))
+            ),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
+                    if [ -f "{removed}" ]; then printf '[]'; else printf '{ls}'; fi
+                fi"#,
+                removed = removed_flag.display(),
+                ls = managed_volume_ls_row()
+            ),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then printf '{}'; fi"#,
+                managed_volume_inspect_json(true)
+            ),
+            r#"if [ "$1" = "volume" ] && [ "$2" = "export" ]; then printf 'precious-existing-data'; fi"#
+                .to_owned(),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "rm" ]; then touch "{}"; fi"#,
+                removed_flag.display()
+            ),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "create" ]; then rm -f "{}"; fi"#,
+                removed_flag.display()
+            ),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "import" ]; then
+                    if [ ! -f "{attempt}" ]; then
+                        touch "{attempt}"
+                        echo "primary import failed: corrupt payload" >&2
+                        exit 1
+                    fi
+                    echo "rollback import failed: disk full" >&2
+                    exit 1
+                fi"#,
+                attempt = attempt_flag.display()
+            ),
+        ]
+        .join("\n");
+        let (bin, record) = fake_podman(dir.path(), &script);
+
+        let err = restore_volume(&bin, &managed_target(), &tar_path)
+            .await
+            .expect_err("double failure must return an error");
+
+        assert!(
+            err.contains("primary import failed: corrupt payload"),
+            "error must include primary restore failure: {err}"
+        );
+        assert!(
+            err.contains("rollback import failed: disk full"),
+            "error must include rollback failure: {err}"
+        );
+        let marker = "manual recovery at: ";
+        let (_, recovery_path_str) = err
+            .split_once(marker)
+            .expect("error must include recovery archive path");
+        let recovery_path = std::path::PathBuf::from(recovery_path_str.trim());
+        assert!(
+            recovery_path.is_file(),
+            "rollback archive must be preserved on disk at {}",
+            recovery_path.display()
+        );
+        assert_eq!(
+            std::fs::read(&recovery_path).expect("read preserved rollback archive"),
+            b"precious-existing-data"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&recovery_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "rollback archive must have owner-only 0600 permissions"
+            );
+        }
+
+        let calls = invocations(&record);
+        let rm_idx = calls
+            .iter()
+            .position(|line| line == &format!("rm -f {ID}"))
+            .expect("container removed");
+        let export_idx = calls
+            .iter()
+            .position(|line| line == &format!("volume export {MANAGED_VOLUME}"))
+            .expect("rollback snapshot exported");
+        assert!(rm_idx < export_idx);
+
+        let _ = std::fs::remove_file(&recovery_path);
+    }
+
+    #[tokio::test]
+    async fn export_volume_enforces_size_limit_and_owner_only_permissions() {
+        let dir = tempfile::TempDir::new().expect("temp fixture dir");
+        let dest = dir.path().join("export.tar");
+        let script = [
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "ls" ]; then printf '{}'; fi"#,
+                managed_volume_ls_row()
+            ),
+            format!(
+                r#"if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then printf '{}'; fi"#,
+                managed_volume_inspect_json(true)
+            ),
+            r#"if [ "$1" = "volume" ] && [ "$2" = "export" ]; then printf '0123456789abcdef'; fi"#
+                .to_owned(),
+        ]
+        .join("\n");
+        let (bin, _) = fake_podman(dir.path(), &script);
+
+        // Exceeding the configured limit aborts and leaves no destination or temp file.
+        let err = export_volume_with_limit(&bin, &managed_target(), &dest, Some(8))
+            .await
+            .expect_err("oversized export must fail");
+        assert!(err.contains("exceeds the maximum supported size"), "got {err}");
+        assert!(!dest.exists());
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".pockets-export-"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp export file must be cleaned up");
+
+        // Within the limit succeeds with 0600 permissions on Unix.
+        export_volume_with_limit(&bin, &managed_target(), &dest, Some(16))
+            .await
+            .expect("export within limit should succeed");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"0123456789abcdef");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+
+        // Unified default limit supports archives well above the old 512 MiB cap.
+        assert!(MAX_BACKUP_ARCHIVE_BYTES > 512 * 1024 * 1024);
     }
 
     /// Idempotence for the retry path: an absent container and an absent

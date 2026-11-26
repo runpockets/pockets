@@ -475,6 +475,30 @@ async fn run_git_clone(git: &Path, url: &str, dest: &Path) -> Result<(), String>
     Ok(())
 }
 
+struct StagingDirGuard(Option<PathBuf>);
+
+impl StagingDirGuard {
+    fn new(path: PathBuf) -> Self {
+        Self(Some(path))
+    }
+
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+
+    fn cleanup_now(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+impl Drop for StagingDirGuard {
+    fn drop(&mut self) {
+        self.cleanup_now();
+    }
+}
+
 /// Clones a public GitHub Pocket repository into `<data_dir>/repos/<owner>__<repo>`
 /// (or a custom destination parent when specified), validates its `pocket.yaml`,
 /// and registers it in Pockets without executing any code.
@@ -484,6 +508,16 @@ pub async fn add_github_pocket(
     dest_parent: Option<PathBuf>,
 ) -> Result<Project, String> {
     let repo = parse_github_repo(source)?;
+    let clone_url = repo.clone_url();
+    add_github_pocket_from_url(ctx, &repo, &clone_url, dest_parent).await
+}
+
+async fn add_github_pocket_from_url(
+    ctx: &AppContext,
+    repo: &GitHubRepo,
+    clone_url: &str,
+    dest_parent: Option<PathBuf>,
+) -> Result<Project, String> {
     let git = find_git()?;
 
     let parent = match dest_parent {
@@ -495,11 +529,14 @@ pub async fn add_github_pocket(
 
     // If this exact repository was already cloned earlier, relink it cleanly.
     if dest.is_dir() && dest.join("pocket.yaml").is_file() {
-        let store = ctx.store();
-        let canonical = std::fs::canonicalize(&dest).unwrap_or(dest);
-        return tokio::task::spawn_blocking(move || development::link(&store, None, &canonical))
-            .await
-            .map_err(|_| "Registering the GitHub Pocket was interrupted.".to_owned())?;
+        let _lifecycle = ctx.controller.lifecycle_guard().await;
+        if dest.is_dir() && dest.join("pocket.yaml").is_file() {
+            let store = ctx.store();
+            let canonical = std::fs::canonicalize(&dest).unwrap_or(dest);
+            return tokio::task::spawn_blocking(move || development::link(&store, None, &canonical))
+                .await
+                .map_err(|_| "Registering the GitHub Pocket was interrupted.".to_owned())?;
+        }
     }
 
     if dest.exists() {
@@ -516,19 +553,71 @@ pub async fn add_github_pocket(
         )
     })?;
 
-    let clone_url = repo.clone_url();
-    if let Err(err) = run_git_clone(&git, &clone_url, &dest).await {
-        let _ = std::fs::remove_dir_all(&dest);
-        return Err(err);
-    }
+    // Clone into a unique per-request staging directory so concurrent clones
+    // never collide and a failed clone never deletes another request's checkout.
+    let staging = parent.join(format!(
+        ".{folder_name}-clone-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let mut staging_guard = StagingDirGuard::new(staging.clone());
 
+    run_git_clone(&git, clone_url, &staging).await?;
+
+    // Validate the cloned Pocket before claiming `dest` so an invalid repo
+    // never lands at the final destination path.
+    let staging_check = staging.clone();
+    let display_slug = repo.display_slug();
+    tokio::task::spawn_blocking(move || {
+        crate::source::capture_approved(&staging_check, "the cloned repository")
+    })
+    .await
+    .map_err(|_| "Validating the GitHub Pocket was interrupted.".to_owned())?
+    .map_err(|err| format!("Cloned {display_slug} but it is not a valid Pocket: {err}"))?;
+
+    let _lifecycle = ctx.controller.lifecycle_guard().await;
     let _building = ctx
         .build_jobs
         .try_claim()
         .ok_or("Wait for the current Build/Update to finish before adding a Pocket.")?;
-    let _lifecycle = ctx.controller.lifecycle_guard().await;
+
+    let claimed_dest = if dest.exists() {
+        // Another request created `dest` concurrently; discard our staging
+        // checkout and reuse `dest` if it is a valid Pocket.
+        staging_guard.cleanup_now();
+        if !(dest.is_dir() && dest.join("pocket.yaml").is_file()) {
+            return Err(format!(
+                "Destination '{}' already exists and does not contain a pocket.yaml.",
+                crate::fs_browser::abbreviate_home_dir(&dest)
+            ));
+        }
+        false
+    } else {
+        match std::fs::rename(&staging, &dest) {
+            Ok(()) => {
+                staging_guard.disarm();
+                true
+            }
+            Err(rename_err) => {
+                staging_guard.cleanup_now();
+                if dest.is_dir() && dest.join("pocket.yaml").is_file() {
+                    false
+                } else if dest.exists() {
+                    return Err(format!(
+                        "Destination '{}' already exists and does not contain a pocket.yaml.",
+                        crate::fs_browser::abbreviate_home_dir(&dest)
+                    ));
+                } else {
+                    return Err(format!(
+                        "Could not move cloned repository into '{}': {rename_err}",
+                        crate::fs_browser::abbreviate_home_dir(&dest)
+                    ));
+                }
+            }
+        }
+    };
+
     let store = ctx.store();
-    let link_dest = dest.clone();
+    let link_dest = std::fs::canonicalize(&dest).unwrap_or_else(|_| dest.clone());
     let linked = tokio::task::spawn_blocking(move || development::link(&store, None, &link_dest))
         .await
         .map_err(|_| "Registering the GitHub Pocket was interrupted.".to_owned())?;
@@ -536,7 +625,9 @@ pub async fn add_github_pocket(
     match linked {
         Ok(project) => Ok(project),
         Err(err) => {
-            let _ = std::fs::remove_dir_all(&dest);
+            if claimed_dest {
+                let _ = std::fs::remove_dir_all(&dest);
+            }
             Err(format!(
                 "Cloned {} but it is not a valid Pocket: {err}",
                 repo.display_slug()
@@ -750,5 +841,97 @@ storage:
             find_existing_project_for_repo(&ctx, &other_repo, None, Some("Unrelated")),
             None
         );
+    }
+
+    fn init_local_pocket_repo(dir: &Path) -> String {
+        let git = find_git().expect("git binary must be available for clone test");
+        let work = dir.join("seed-repo");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("pocket.yaml"), VALID_MANIFEST).unwrap();
+        std::fs::write(work.join("Containerfile"), "FROM scratch\n").unwrap();
+
+        let run = |args: &[&str], cwd: &Path| {
+            let status = std::process::Command::new(&git)
+                .args(args)
+                .current_dir(cwd)
+                .env("GIT_AUTHOR_NAME", "Pockets Test")
+                .env("GIT_AUTHOR_EMAIL", "test@pockets.local")
+                .env("GIT_COMMITTER_NAME", "Pockets Test")
+                .env("GIT_COMMITTER_EMAIL", "test@pockets.local")
+                .status()
+                .expect("run git");
+            assert!(status.success(), "git {:?} failed", args);
+        };
+
+        run(&["init", "-b", "main"], &work);
+        run(&["add", "pocket.yaml", "Containerfile"], &work);
+        run(&["commit", "-m", "initial"], &work);
+        format!("file://{}", work.display())
+    }
+
+    #[tokio::test]
+    async fn concurrent_clones_of_same_repo_are_race_safe_and_preserve_checkout() {
+        let temp = tempfile::tempdir().unwrap();
+        let seed_url = init_local_pocket_repo(temp.path());
+        let data_dir = temp.path().join("app-data");
+        let repos_dir = temp.path().join("repos");
+        let ctx = AppContext::new(data_dir);
+        let repo = parse_github_repo("runpockets/coinkiwi").unwrap();
+
+        // Fire three concurrent clones for the exact same repo & destination.
+        let (r1, r2, r3) = tokio::join!(
+            add_github_pocket_from_url(&ctx, &repo, &seed_url, Some(repos_dir.clone())),
+            add_github_pocket_from_url(&ctx, &repo, &seed_url, Some(repos_dir.clone())),
+            add_github_pocket_from_url(&ctx, &repo, &seed_url, Some(repos_dir.clone())),
+        );
+        let p1 = r1.expect("first concurrent clone should succeed");
+        let p2 = r2.expect("second concurrent clone should succeed");
+        let p3 = r3.expect("third concurrent clone should succeed");
+
+        // All three resolve to the same registered Pocket without duplicating or deleting it.
+        assert_eq!(p1.id, p2.id);
+        assert_eq!(p2.id, p3.id);
+
+        let dest = repos_dir.join(repo.repo_folder_name());
+        assert!(dest.join("pocket.yaml").is_file());
+        assert!(dest.join("Containerfile").is_file());
+
+        // No leftover per-request staging directories remain.
+        let staging_leftovers: Vec<_> = std::fs::read_dir(&repos_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("-clone-")
+            })
+            .collect();
+        assert!(
+            staging_leftovers.is_empty(),
+            "staging directories must be cleaned up: {staging_leftovers:?}"
+        );
+
+        // A failing clone for an invalid repo URL targeting an existing non-pocket path
+        // or a new path must never leave staging dirs or delete unrelated files.
+        let bad_repo = parse_github_repo("runpockets/failing-clone").unwrap();
+        let bad_url = format!("file://{}/does-not-exist", temp.path().display());
+        assert!(
+            add_github_pocket_from_url(&ctx, &bad_repo, &bad_url, Some(repos_dir.clone()))
+                .await
+                .is_err()
+        );
+        assert!(dest.join("pocket.yaml").is_file());
+        let staging_after_fail: Vec<_> = std::fs::read_dir(&repos_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("-clone-")
+            })
+            .collect();
+        assert!(staging_after_fail.is_empty());
     }
 }

@@ -262,7 +262,7 @@ pub async fn apply_update() -> Result<ApplyUpdateResult, String> {
             prefix,
             has_brew_podman,
         } => {
-            upgrade_homebrew(&prefix, has_brew_podman).await?;
+            upgrade_homebrew(&prefix, has_brew_podman, &target_version).await?;
             clear_cache().await;
             schedule_restart(RestartStrategy::Homebrew { prefix });
             Ok(ApplyUpdateResult {
@@ -483,7 +483,54 @@ async fn run_bounded(bin: &Path, args: &[&str], timeout: Duration) -> Result<Str
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-async fn upgrade_homebrew(prefix: &Path, has_brew_podman: bool) -> Result<(), String> {
+fn parse_installed_cli_version(stdout: &str) -> Option<String> {
+    stdout.split_whitespace().find_map(|token| {
+        let (major, minor, patch) = parse_semver(token)?;
+        Some(format!("{major}.{minor}.{patch}"))
+    })
+}
+
+async fn verify_installed_version(bin: &Path, target_version: &str) -> Result<(), String> {
+    if !bin.is_file() {
+        return Err(format!(
+            "Could not verify upgraded Pockets binary at {}: file not found.",
+            bin.display()
+        ));
+    }
+    let output = run_bounded(bin, &["--version"], Duration::from_secs(10)).await?;
+    let installed = parse_installed_cli_version(&output).ok_or_else(|| {
+        format!(
+            "Could not parse version reported by `{}`: {:?}",
+            bin.display(),
+            output.trim()
+        )
+    })?;
+    let installed_semver = parse_semver(&installed).ok_or_else(|| {
+        format!("Invalid version '{installed}' reported by upgraded Pockets binary.")
+    })?;
+    let target_semver = parse_semver(target_version).ok_or_else(|| {
+        format!("Invalid target Pockets version '{target_version}'.")
+    })?;
+
+    if installed_semver == target_semver {
+        return Ok(());
+    }
+    if installed_semver < target_semver {
+        return Err(format!(
+            "Homebrew upgrade finished, but installed Pockets is still v{installed} instead of v{target_version}. \
+             The Homebrew tap may still be publishing v{target_version} — try again in a few minutes or run `brew update && brew upgrade pockets`."
+        ));
+    }
+    Err(format!(
+        "Homebrew upgrade finished, but installed Pockets reported v{installed} instead of expected v{target_version}."
+    ))
+}
+
+async fn upgrade_homebrew(
+    prefix: &Path,
+    has_brew_podman: bool,
+    target_version: &str,
+) -> Result<(), String> {
     let brew = find_brew(prefix).ok_or_else(|| {
         "Could not locate `brew`. Run `brew update && brew upgrade pockets` in your terminal."
             .to_owned()
@@ -496,6 +543,11 @@ async fn upgrade_homebrew(prefix: &Path, has_brew_podman: bool) -> Result<(), St
         &["upgrade", "--ignore-dependencies", "runpockets/tap/pockets"]
     };
     run_bounded(&brew, upgrade_args, Duration::from_secs(180)).await?;
+
+    let installed_bin = resolve_restart_binary(&RestartStrategy::Homebrew {
+        prefix: prefix.to_path_buf(),
+    });
+    verify_installed_version(&installed_bin, target_version).await?;
     Ok(())
 }
 
@@ -746,5 +798,52 @@ e2f1dce03c197dec075d92db60f91d53cfea51aa8c535f618b1dfe8816116280  pockets-v0.1.0
             Some("e2f1dce03c197dec075d92db60f91d53cfea51aa8c535f618b1dfe8816116280")
         );
         assert_eq!(parse_checksum_for_asset(sums, "missing.tar.gz"), None);
+    }
+
+    #[test]
+    fn parses_pockets_cli_version_output() {
+        assert_eq!(
+            parse_installed_cli_version("pockets 0.2.1\n").as_deref(),
+            Some("0.2.1")
+        );
+        assert_eq!(
+            parse_installed_cli_version("pockets v1.4.0\n").as_deref(),
+            Some("1.4.0")
+        );
+        assert_eq!(parse_installed_cli_version("pockets dev"), None);
+        assert_eq!(parse_installed_cli_version(""), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn verify_installed_version_accepts_match_and_rejects_lagging_tap() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let make_bin = |name: &str, script: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+
+        let matching = make_bin("pockets-ok", "#!/bin/sh\necho 'pockets 0.2.0'\n");
+        verify_installed_version(&matching, "0.2.0")
+            .await
+            .expect("matching installed version must pass");
+
+        let lagging = make_bin("pockets-old", "#!/bin/sh\necho 'pockets 0.1.9'\n");
+        let err = verify_installed_version(&lagging, "0.2.0")
+            .await
+            .expect_err("lagging Homebrew tap version must fail");
+        assert!(err.contains("0.1.9"), "got {err}");
+        assert!(err.contains("0.2.0"), "got {err}");
+        assert!(err.contains("Homebrew tap"), "got {err}");
+
+        let broken = make_bin("pockets-bad", "#!/bin/sh\necho 'unknown'\n");
+        let err = verify_installed_version(&broken, "0.2.0")
+            .await
+            .expect_err("unparseable version must fail");
+        assert!(err.contains("Could not parse version"), "got {err}");
     }
 }

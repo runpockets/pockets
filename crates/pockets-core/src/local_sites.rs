@@ -11,6 +11,11 @@ use crate::pocket::loopback_url_port;
 use crate::projects::{Project, Store};
 
 const BUNDLED_HOST: &str = "hello-pocket.localhost";
+const DASHBOARD_HOST: &str = "pockets.localhost";
+
+fn is_reserved_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case(BUNDLED_HOST) || host.eq_ignore_ascii_case(DASHBOARD_HOST)
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum Site<'a> {
@@ -55,22 +60,32 @@ impl Address {
 }
 
 /// Looks up the saved local site slug (`"notes"`, `"notes-2"`, ...) for a
-/// managed project, falling back to its validated installed manifest id when
-/// the Pocket has not been started yet.
+/// managed project, falling back to the next available non-reserved slug for
+/// its validated installed manifest id when the Pocket has not been started yet
+/// (or if an older registry entry previously mapped it to a reserved hostname).
 pub(crate) fn slug_for_project(store: &Store, project: &Project) -> String {
     let path = store.root().with_file_name("local-sites.json");
-    if let Ok(bytes) = fs::read(&path) {
-        if let Ok(sites) = serde_json::from_slice::<BTreeMap<String, Assignment>>(&bytes) {
-            if let Some((host, _)) = sites.iter().find(|(_, row)| row.id() == project.id) {
-                if let Some(label) = host.strip_suffix(".localhost") {
-                    if manifest::validate_id("local site", label).is_ok() {
-                        return label.to_owned();
-                    }
+    let sites = fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<BTreeMap<String, Assignment>>(&bytes).ok())
+        .unwrap_or_default();
+
+    if let Some((host, _)) = sites.iter().find(|(_, row)| row.id() == project.id) {
+        if !is_reserved_host(host) {
+            if let Some(label) = host.strip_suffix(".localhost") {
+                if manifest::validate_id("local site", label).is_ok() {
+                    return label.to_owned();
                 }
             }
         }
     }
-    project.installed_manifest().metadata.id.clone()
+
+    let fallback_host = available_host(&project.installed_manifest().metadata.id, &sites);
+    fallback_host
+        .strip_suffix(".localhost")
+        .filter(|label| manifest::validate_id("local site", label).is_ok())
+        .unwrap_or(&project.installed_manifest().metadata.id)
+        .to_owned()
 }
 
 /// Looks up the pinned host loopback port for a managed project from
@@ -124,25 +139,59 @@ impl Site<'_> {
                 project.installed_manifest().metadata.id.as_str(),
             ),
         };
-        let existing = sites.iter().find(|(_, row)| row.id() == id);
-        let host = match existing {
-            Some((host, _)) => host.clone(),
-            None if matches!(self, Self::Bundled) => BUNDLED_HOST.to_owned(),
-            None => available_host(slug, &sites),
+        let existing_entry = sites
+            .iter()
+            .find(|(_, row)| row.id() == id)
+            .map(|(host, row)| {
+                (
+                    host.clone(),
+                    match row {
+                        Assignment::Legacy(_) => None,
+                        Assignment::Pinned { port, .. } => Some(port.get()),
+                    },
+                )
+            });
+        let (host, pinned_port, migrated_from) = match existing_entry {
+            Some((existing_host, pinned_port))
+                if matches!(self, Self::Managed(_)) && is_reserved_host(&existing_host) =>
+            {
+                (
+                    available_host(slug, &sites),
+                    pinned_port,
+                    Some(existing_host),
+                )
+            }
+            Some((existing_host, pinned_port)) => (existing_host, pinned_port, None),
+            None if matches!(self, Self::Bundled) => (BUNDLED_HOST.to_owned(), None, None),
+            None => (available_host(slug, &sites), None, None),
         };
         let label = host
             .strip_suffix(".localhost")
             .ok_or("Invalid saved local hostname.")?;
         manifest::validate_id("local site", label)?;
-        if let Some((_, Assignment::Pinned { port, .. })) = existing {
-            let port = port.get();
+        if let Some(port) = pinned_port {
             if observed.is_none() && !port_available(port)? {
                 return Err(format!("Local port {port} is in use. Free that port and start the Pocket again to use {host}:{port}."));
             }
             if observed.is_some_and(|actual| actual != port) {
                 return Err(format!("The running Pocket is mapped to a different port. Stop it in Pockets and start it again to restore {host}:{port}."));
             }
+            if let Some(old_host) = migrated_from {
+                sites.remove(&old_host);
+                sites.insert(
+                    host.clone(),
+                    Assignment::Pinned {
+                        id: id.to_owned(),
+                        port: port.try_into().map_err(|_| "Invalid local port.")?,
+                    },
+                );
+                write_sites(&path, &sites).map_err(io_error)?;
+            }
             return Ok(Address { host, port });
+        }
+
+        if let Some(old_host) = migrated_from {
+            sites.remove(&old_host);
         }
 
         let reserved: BTreeSet<_> = sites
@@ -164,20 +213,26 @@ impl Site<'_> {
                 port: port.try_into().map_err(|_| "Invalid local port.")?,
             },
         );
-        let staged = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
-        let bytes = serde_json::to_vec(&sites).map_err(|err| err.to_string())?;
-        if let Err(err) = fs::write(&staged, bytes).and_then(|_| fs::rename(&staged, &path)) {
-            let _ = fs::remove_file(staged);
-            return Err(io_error(err));
-        }
+        write_sites(&path, &sites).map_err(io_error)?;
         Ok(Address { host, port })
     }
+}
+
+fn write_sites(path: &std::path::Path, sites: &BTreeMap<String, Assignment>) -> std::io::Result<()> {
+    let staged = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
+    let bytes = serde_json::to_vec(sites)
+        .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
+    if let Err(err) = fs::write(&staged, bytes).and_then(|_| fs::rename(&staged, path)) {
+        let _ = fs::remove_file(staged);
+        return Err(err);
+    }
+    Ok(())
 }
 
 fn available_host(slug: &str, sites: &BTreeMap<String, Assignment>) -> String {
     let mut host = format!("{slug}.localhost");
     let mut number = 2;
-    while host == BUNDLED_HOST || sites.contains_key(&host) {
+    while is_reserved_host(&host) || sites.contains_key(&host) {
         let suffix = format!("-{number}");
         let len = slug.len().min(manifest::MAX_ID_LEN - suffix.len());
         host = format!("{}{suffix}.localhost", slug[..len].trim_end_matches('-'));
@@ -297,5 +352,79 @@ mod tests {
             host(&store, &second).unwrap(),
             format!("{prefix}-2.localhost")
         );
+    }
+
+    #[test]
+    fn reserves_dashboard_hostname_for_new_and_unstarted_pockets() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().join("projects"));
+        let first = project(&store, "pockets");
+        let second = project(&store, "pockets");
+
+        // Even before starting, slug_for_project must never return "pockets".
+        assert_eq!(slug_for_project(&store, &first), "pockets-2");
+
+        assert_eq!(host(&store, &first).unwrap(), "pockets-2.localhost");
+        assert_eq!(slug_for_project(&store, &first), "pockets-2");
+        assert_eq!(host(&store, &second).unwrap(), "pockets-3.localhost");
+        assert_eq!(slug_for_project(&store, &second), "pockets-3");
+    }
+
+    #[test]
+    fn migrates_existing_pinned_and_legacy_pockets_localhost_entries() {
+        // 1. Existing pinned entry on pockets.localhost is migrated while preserving its port.
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().join("projects"));
+        let pinned_proj = project(&store, "pockets");
+        let other = project(&store, "pockets");
+        fs::write(
+            temp.path().join("local-sites.json"),
+            serde_json::json!({
+                "pockets.localhost": { "id": pinned_proj.id, "port": 24567 },
+                "pockets-2.localhost": { "id": other.id, "port": 24568 }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        // Pre-migration slug lookup must skip reserved pockets.localhost.
+        assert_eq!(slug_for_project(&store, &pinned_proj), "pockets-3");
+
+        let migrated = Site::Managed(&pinned_proj)
+            .running_address(&store, Some("http://127.0.0.1:24567"))
+            .unwrap();
+        assert_eq!(migrated.host, "pockets-3.localhost");
+        assert_eq!(migrated.port, 24567);
+
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(temp.path().join("local-sites.json")).unwrap())
+                .unwrap();
+        assert!(saved.get("pockets.localhost").is_none());
+        assert_eq!(saved["pockets-3.localhost"]["id"], pinned_proj.id);
+        assert_eq!(saved["pockets-3.localhost"]["port"], 24567);
+
+        // 2. Existing legacy entry on pockets.localhost is also migrated.
+        let legacy_temp = tempfile::tempdir().unwrap();
+        let legacy_store = Store::new(legacy_temp.path().join("projects"));
+        let legacy_proj = project(&legacy_store, "pockets");
+        fs::write(
+            legacy_temp.path().join("local-sites.json"),
+            serde_json::json!({
+                "pockets.localhost": legacy_proj.id
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let legacy_migrated = Site::Managed(&legacy_proj)
+            .address(&legacy_store, None)
+            .unwrap();
+        assert_eq!(legacy_migrated.host, "pockets-2.localhost");
+        let legacy_saved: serde_json::Value = serde_json::from_slice(
+            &fs::read(legacy_temp.path().join("local-sites.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(legacy_saved.get("pockets.localhost").is_none());
+        assert_eq!(legacy_saved["pockets-2.localhost"]["id"], legacy_proj.id);
     }
 }

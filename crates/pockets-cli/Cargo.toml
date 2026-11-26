@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 pockets-core = { path = "../pockets-core" }
 tokio = { version = "1", features = [
+    "fs",
     "macros",
     "net",
     "rt-multi-thread",
