@@ -74,7 +74,7 @@ test("create renders a valid project into a parent directory whose name contains
   assert.deepEqual(manifest.data.runtime.architectures, [HOST_ARCH]);
   assert.equal(
     manifest.data.runtime.image,
-    "localhost/pockets-my-new-pocket:0.1.0",
+    "localhost/pockets-my-new-pocket:local",
   );
 
   // Dotfiles are copied with the reviewed template's content.

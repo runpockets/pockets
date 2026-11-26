@@ -9,6 +9,7 @@ import type {
 import { TitleBar } from "./TitleBar";
 import { IconButton, StatusPip } from "./Status";
 import { IconPanelLeft, IconPanelRight } from "./Icons";
+import { formatVersionTag } from "./formatVersion";
 import "./NewProject.css";
 
 const FOLDER_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -268,7 +269,7 @@ export default function NewProject({
                           </h3>
                           {pocket.version && (
                             <span className="new-project-tag">
-                              v{pocket.version}
+                              {formatVersionTag(pocket.version)}
                             </span>
                           )}
                         </div>
@@ -405,7 +406,7 @@ export default function NewProject({
                     {repoPreview.manifest.metadata.name}
                   </h3>
                   <span className="new-project-tag">
-                    v{repoPreview.manifest.metadata.version}
+                    {formatVersionTag(repoPreview.manifest.metadata.version)}
                   </span>
                 </div>
                 <p className="new-project-hub-description">

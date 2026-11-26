@@ -1,0 +1,36 @@
+.file-icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.file-icon--js,
+.file-icon--json {
+  color: var(--warn);
+}
+
+.file-icon--ts,
+.file-icon--css,
+.file-icon--container {
+  color: var(--info);
+}
+
+.file-icon--html,
+.file-icon--yaml {
+  color: var(--danger);
+}
+
+.file-icon--test,
+.file-icon--image,
+.file-icon--shell {
+  color: var(--ok);
+}
+
+.file-icon--markdown,
+.file-icon--generic {
+  color: var(--text-dim);
+}
+
+.file-icon--config {
+  color: var(--text-faint);
+}

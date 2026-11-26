@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use pockets_core::{
     creation, development_commands, fs_browser, github_install, hub, project_lifecycle,
-    project_preview, resource_monitor, revision_commands, runtime_settings, AppContext,
+    project_preview, resource_monitor, revision_commands, runtime_settings, upstream, AppContext,
 };
 
 fn parse_args<T: for<'de> Deserialize<'de>>(body: Value) -> Result<T, String> {
@@ -87,15 +87,6 @@ struct RestoreRevisionArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SetVersionNoteArgs {
-    id: String,
-    revision_id: String,
-    #[serde(default)]
-    note: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct RestoreVersionArgs {
     id: String,
     revision_id: String,
@@ -153,6 +144,26 @@ struct CheckHubSubmissionArgs {
     repo: Option<String>,
     #[serde(default)]
     verify_remote: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckUpstreamArgs {
+    id: String,
+    #[serde(default)]
+    force: bool,
+}
+
+fn default_pull_mode() -> upstream::PullMode {
+    upstream::PullMode::FastForward
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PullUpstreamArgs {
+    id: String,
+    #[serde(default = "default_pull_mode")]
+    mode: upstream::PullMode,
 }
 
 #[derive(Deserialize)]
@@ -352,17 +363,6 @@ pub async fn dispatch(
             let args: IdArg = parse_args(body)?;
             to_json(revision_commands::list_project_versions(ctx, args.id).await?)
         }
-        "set_project_version_note" => {
-            let args: SetVersionNoteArgs = parse_args(body)?;
-            revision_commands::set_project_version_note(
-                ctx,
-                args.id,
-                args.revision_id,
-                args.note,
-            )
-            .await?;
-            Ok(Value::Null)
-        }
 
         "project_status" => {
             let args: IdArg = parse_args(body)?;
@@ -446,6 +446,16 @@ pub async fn dispatch(
                 )
                 .await?,
             )
+        }
+
+        "check_project_upstream" => {
+            let args: CheckUpstreamArgs = parse_args(body)?;
+            to_json(upstream::check_project_upstream(ctx, &args.id, args.force).await?)
+        }
+
+        "pull_project_upstream" => {
+            let args: PullUpstreamArgs = parse_args(body)?;
+            to_json(upstream::pull_project_upstream(ctx, &args.id, args.mode).await?)
         }
 
         "browse_directory" => {

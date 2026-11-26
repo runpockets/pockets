@@ -41,6 +41,7 @@ pub mod scaffold;
 pub mod source;
 pub mod tailscale;
 pub mod tailscale_portal;
+pub mod upstream;
 pub mod versions;
 
 /// Semantic version baked into this Pockets binary (set from the release tag

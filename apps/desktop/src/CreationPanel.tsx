@@ -8,12 +8,14 @@ import {
 import { invoke, listen } from "./api";
 import { createPortal } from "react-dom";
 import RevisionHistory from "./RevisionHistory";
+import UpstreamUpdates from "./UpstreamUpdates";
 import Versions from "./Versions";
 import { formatBytes, formatPercent } from "./formatBytes";
 import { useOverlay } from "./OverlayContext";
 import type { PocketUsage } from "./PocketSidebar";
 import { type PipTone } from "./Status";
 import { IconExternalLink, IconPlus } from "./Icons";
+import { FileIcon } from "./FileIcon";
 import {
   QrCodeSvg,
   type TailscaleReport,
@@ -3040,6 +3042,17 @@ function ProjectCard({
               </div>
             </details>
 
+            {/* Upstream Git updates (for Hub/GitHub-pulled or remote-tracked Pockets). */}
+            {project.developmentLinked && (
+              <UpstreamUpdates
+                projectId={project.id}
+                built={built}
+                workingDigest={project.sourceDigest}
+                disabled={busy}
+                onPulled={onRestored}
+              />
+            )}
+
             {/* Versions: what was made live, and what changed each time. */}
             {built && (
               <Versions
@@ -3120,6 +3133,7 @@ function ProjectCard({
                     <ul className="creation-files">
                       {project.files.map((file) => (
                         <li key={file}>
+                          <FileIcon path={file} />
                           <code>{file}</code>
                         </li>
                       ))}

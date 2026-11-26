@@ -45,9 +45,9 @@ struct Entry {
     revision_id: String,
     source_digest: String,
     installed_at_seconds: i64,
-    /// The owner's own one-line name for this version, when they gave one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    note: Option<String>,
+    /// Accept older logs that stored a manual note and drop it on next write.
+    #[serde(default, skip_serializing, rename = "note")]
+    _legacy_note: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -75,6 +75,22 @@ pub struct FileChange {
     pub removed_lines: Option<u64>,
 }
 
+/// Starter template default `metadata.version`; omitted on the first install
+/// unless the owner explicitly changed it.
+const DEFAULT_STARTER_VERSION: &str = "0.1.0";
+
+/// Normalizes a manifest version for equality comparisons (ignoring whitespace
+/// and any leading `v`/`V`).
+fn normalized_manifest_version(version: &str) -> &str {
+    let trimmed = version.trim();
+    let bare = trimmed.trim_start_matches(['v', 'V']);
+    if bare.is_empty() {
+        trimmed
+    } else {
+        bare
+    }
+}
+
 /// One installed version, newest first in [`VersionsReport::versions`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,8 +107,10 @@ pub struct VersionSummary {
     pub changes: Vec<FileChange>,
     /// Lines the coding agent added to [`CHANGES_FILE`] for this version.
     pub notes: Vec<String>,
-    /// The owner's own name for this version, which wins over `notes`.
-    pub note: Option<String>,
+    /// `metadata.version` from `pocket.yaml` when this install changed it
+    /// relative to the previous install (or started at a non-default version).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_version: Option<String>,
 }
 
 /// Synced source that is not live yet, compared with the live version.
@@ -101,6 +119,10 @@ pub struct VersionSummary {
 pub struct PendingChanges {
     pub changes: Vec<FileChange>,
     pub notes: Vec<String>,
+    /// `metadata.version` from the synced `pocket.yaml` when it differs from
+    /// the live install's version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_version: Option<String>,
 }
 
 /// Whether the source lives in a folder Pockets can see git in.
@@ -204,7 +226,7 @@ pub(crate) fn record_install(
                         revision_id: id.clone(),
                         source_digest: previous.source_digest.clone(),
                         installed_at_seconds: seconds,
-                        note: None,
+                        _legacy_note: None,
                     });
                 }
             }
@@ -225,7 +247,7 @@ pub(crate) fn record_install(
         revision_id: revision_id.clone(),
         source_digest: installed.source_digest.clone(),
         installed_at_seconds,
-        note: None,
+        _legacy_note: None,
     });
     if log.versions.len() > MAX_ENTRIES {
         let excess = log.versions.len() - MAX_ENTRIES;
@@ -258,7 +280,7 @@ fn recorded_entries(store: &Store, project: &Project) -> Result<Vec<Entry>, Stri
                         revision_id: revision_id.clone(),
                         source_digest: installed.source_digest.clone(),
                         installed_at_seconds: seconds,
-                        note: None,
+                        _legacy_note: None,
                     });
                 }
             }
@@ -282,18 +304,23 @@ pub(crate) fn list(store: &Store, project_id: &str) -> Result<VersionsReport, St
 
     // Walk oldest to newest holding only the previous snapshot, so memory
     // stays at two snapshots however long the history is.
-    let files_of = |revision_id: &str| -> Result<BTreeMap<String, Vec<u8>>, String> {
-        Ok(
-            crate::revisions::revision_files(store, &project.id, revision_id)?
-                .into_iter()
-                .collect(),
-        )
-    };
+    let snapshot_of =
+        |revision_id: &str| -> Result<(String, BTreeMap<String, Vec<u8>>), String> {
+            let snap = crate::revisions::revision_snapshot(store, &project.id, revision_id)?;
+            Ok((snap.manifest_version, snap.files.into_iter().collect()))
+        };
     let mut versions = Vec::with_capacity(entries.len());
     let mut previous: Option<BTreeMap<String, Vec<u8>>> = None;
+    let mut previous_version: Option<String> = None;
     let mut live_files: Option<BTreeMap<String, Vec<u8>>> = None;
     for (index, entry) in entries.iter().enumerate() {
-        let current = files_of(&entry.revision_id)?;
+        let (raw_version, current) = snapshot_of(&entry.revision_id)?;
+        let current_norm = normalized_manifest_version(&raw_version);
+        let manifest_version = match &previous_version {
+            None => (current_norm != DEFAULT_STARTER_VERSION).then(|| raw_version.clone()),
+            Some(prev) => (current_norm != normalized_manifest_version(prev))
+                .then(|| raw_version.clone()),
+        };
         let changes = match &previous {
             Some(previous) => without_changes_file(diff_snapshots(previous, &current)),
             None => Vec::new(),
@@ -307,12 +334,13 @@ pub(crate) fn list(store: &Store, project_id: &str) -> Result<VersionsReport, St
             files: current.len(),
             changes,
             notes,
-            note: entry.note.clone(),
+            manifest_version,
         });
         if Some(index) == live_index {
             live_files = Some(current.clone());
         }
         previous = Some(current);
+        previous_version = Some(raw_version);
     }
 
     let pending = match (&project.installed, live_files) {
@@ -321,9 +349,15 @@ pub(crate) fn list(store: &Store, project_id: &str) -> Result<VersionsReport, St
             let working = source::capture_record_files(&managed, &project.files)?;
             source::verify_against_record("the managed source", &working, &project)?;
             let working: BTreeMap<String, Vec<u8>> = working.into_iter().collect();
+            let working_ver = &project.manifest.metadata.version;
+            let live_ver = &installed.manifest.metadata.version;
+            let manifest_version = (normalized_manifest_version(working_ver)
+                != normalized_manifest_version(live_ver))
+            .then(|| working_ver.clone());
             Some(PendingChanges {
                 changes: without_changes_file(diff_snapshots(&live, &working)),
                 notes: new_notes(Some(&live), &working),
+                manifest_version,
             })
         }
         _ => None,
@@ -574,37 +608,6 @@ fn new_notes(
     notes
 }
 
-/// Gives a recorded version the owner's own one-line name, or clears it
-/// with `None` or an empty note. Only the version log changes.
-pub(crate) fn set_note(
-    store: &Store,
-    project_id: &str,
-    revision_id: &str,
-    note: Option<&str>,
-) -> Result<(), String> {
-    let note = match note.map(str::trim) {
-        None | Some("") => None,
-        Some(note) => {
-            if note.chars().count() > MAX_NOTE_CHARS || note.chars().any(char::is_control) {
-                return Err(format!(
-                    "A version note is one line of at most {MAX_NOTE_CHARS} characters."
-                ));
-            }
-            Some(note.to_owned())
-        }
-    };
-    let project = store.load(project_id)?;
-    // Pockets installed before the log existed list a synthesized entry;
-    // naming it writes the log for the first time.
-    let mut entries = recorded_entries(store, &project)?;
-    let entry = entries
-        .iter_mut()
-        .find(|entry| entry.revision_id == revision_id)
-        .ok_or("That version is not in this Pocket's history.")?;
-    entry.note = note;
-    write_log(&log_path(store, &project.id)?, &Log { versions: entries })
-}
-
 fn source_control(store: &Store, project_id: &str) -> Result<SourceControl, String> {
     let Some(folder) = crate::development::linked_folder(store, project_id)? else {
         return Ok(SourceControl::Unlinked);
@@ -786,11 +789,23 @@ mod tests {
                 revision_id: "a".repeat(32),
                 source_digest: "b".repeat(64),
                 installed_at_seconds: 1_700_000_000,
-                note: Some("Named by hand".into()),
+                _legacy_note: None,
             }],
         };
         write_log(&path, &log).expect("write");
         assert_eq!(read_log(&path).expect("read").versions, log.versions);
+
+        // Older logs that carried a manual `note` field still parse cleanly.
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"versions":[{{"revisionId":"{}","sourceDigest":"{}","installedAtSeconds":1700000000,"note":"Legacy"}}]}}"#,
+                "a".repeat(32),
+                "b".repeat(64)
+            ),
+        )
+        .expect("legacy");
+        assert_eq!(read_log(&path).expect("read legacy").versions.len(), 1);
 
         std::fs::write(&path, b"{ not json").expect("corrupt");
         assert!(read_log(&path).is_err());
@@ -1156,50 +1171,86 @@ mod tests {
         assert_eq!(pending.notes, vec!["Sort by price".to_owned()]);
         assert_eq!(pending.changes.len(), 1, "only app/main.go");
 
-        let older = report.versions[1].revision_id.clone();
-        set_note(&store, &project.id, &older, Some("  The first release  ")).expect("note");
-        let report = list(&store, &project.id).expect("list");
-        assert_eq!(
-            report.versions[1].note.as_deref(),
-            Some("The first release")
-        );
-        assert_eq!(report.versions[0].note, None);
-
-        set_note(&store, &project.id, &older, Some("")).expect("clear");
-        assert_eq!(list(&store, &project.id).unwrap().versions[1].note, None);
-        assert!(set_note(&store, &project.id, &older, Some("two\nlines")).is_err());
-        assert!(set_note(&store, &project.id, &"f".repeat(32), Some("x")).is_err());
-
-        // Notes survive the next Update's log write.
-        set_note(&store, &project.id, &older, Some("The first release")).expect("note");
         install(&store, &project.id, 300);
         let report = list(&store, &project.id).expect("list");
         assert_eq!(report.versions.len(), 3);
         assert_eq!(report.versions[0].notes, vec!["Sort by price".to_owned()]);
-        assert_eq!(
-            report.versions[2].note.as_deref(),
-            Some("The first release")
-        );
     }
 
     #[test]
-    fn a_legacy_install_can_be_named_before_the_log_exists() {
+    fn manifest_version_appears_only_when_non_default_or_changed() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
+        let store = Store::new(tmp.path().join("store"));
+
         let first = tmp.path().join("first");
         pocket_dir(&first, "package one\n");
-        let store = Store::new(tmp.path().join("store"));
         let project = source::import_project(&store, &first).expect("import");
         install(&store, &project.id, 100);
-        std::fs::remove_file(log_path(&store, &project.id).unwrap()).expect("drop log");
-        let only = list(&store, &project.id).unwrap().versions[0]
-            .revision_id
-            .clone();
-        set_note(&store, &project.id, &only, Some("Launch")).expect("note");
+
+        // Staying on default 0.1.0 leaves manifest_version unset.
+        let second = tmp.path().join("second");
+        pocket_dir(&second, "package two\n");
+        crate::revisions::publish_working(&store, &project.id, &second, "sync").expect("publish");
+        install(&store, &project.id, 200);
+
+        // Bumping to 0.2.0 surfaces on pending, then on the installed build.
+        let third = tmp.path().join("third");
+        pocket_dir(&third, "package three\n");
+        std::fs::write(
+            third.join("pocket.yaml"),
+            TEST_MANIFEST.replace("version: 0.1.0", "version: 0.2.0"),
+        )
+        .expect("manifest");
+        crate::revisions::publish_working(&store, &project.id, &third, "sync").expect("publish");
+
+        let before_install = list(&store, &project.id).expect("list");
+        assert_eq!(before_install.versions[0].manifest_version, None);
+        assert_eq!(before_install.versions[1].manifest_version, None);
         assert_eq!(
-            list(&store, &project.id).unwrap().versions[0]
-                .note
-                .as_deref(),
-            Some("Launch")
+            before_install
+                .pending
+                .as_ref()
+                .and_then(|p| p.manifest_version.as_deref()),
+            Some("0.2.0")
+        );
+
+        install(&store, &project.id, 300);
+
+        // A follow-up edit that keeps 0.2.0 does not repeat the badge.
+        let fourth = tmp.path().join("fourth");
+        pocket_dir(&fourth, "package four\n");
+        std::fs::write(
+            fourth.join("pocket.yaml"),
+            TEST_MANIFEST.replace("version: 0.1.0", "version: v0.2.0"),
+        )
+        .expect("manifest");
+        crate::revisions::publish_working(&store, &project.id, &fourth, "sync").expect("publish");
+        install(&store, &project.id, 400);
+
+        let report = list(&store, &project.id).expect("list");
+        assert_eq!(
+            report
+                .versions
+                .iter()
+                .map(|v| v.manifest_version.as_deref())
+                .collect::<Vec<_>>(),
+            vec![None, Some("0.2.0"), None, None]
+        );
+
+        // A Pocket whose first install starts at a non-default version shows it.
+        let hub_dir = tmp.path().join("hub");
+        pocket_dir(&hub_dir, "package hub\n");
+        std::fs::write(
+            hub_dir.join("pocket.yaml"),
+            TEST_MANIFEST.replace("version: 0.1.0", "version: 0.4.0"),
+        )
+        .expect("manifest");
+        let hub_project = source::import_project(&store, &hub_dir).expect("import");
+        install(&store, &hub_project.id, 100);
+        let hub_report = list(&store, &hub_project.id).expect("list");
+        assert_eq!(
+            hub_report.versions[0].manifest_version.as_deref(),
+            Some("0.4.0")
         );
     }
 }

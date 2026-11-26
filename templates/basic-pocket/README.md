@@ -55,12 +55,12 @@ needed for the `format`/`format:check` scripts (Prettier dev dependency).
 ## Optional developer container build (from this folder)
 
 ```sh
-podman build -t localhost/pockets-__POCKET_ID__:0.1.0 .
+podman build -t localhost/pockets-__POCKET_ID__:local .
 podman run -d --name pockets-__POCKET_ID__ \
   -p 127.0.0.1:8080:8080 \
   -v pockets-__POCKET_ID__-data:/data \
   --pull=never --cap-drop=ALL --security-opt=no-new-privileges \
-  localhost/pockets-__POCKET_ID__:0.1.0
+  localhost/pockets-__POCKET_ID__:local
 ```
 
 Open <http://127.0.0.1:8080>, stop the container, start it again with the same

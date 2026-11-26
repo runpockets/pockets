@@ -101,6 +101,12 @@ button.versions-row .versions-subject {
   white-space: nowrap;
 }
 
+.versions-tag {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .versions-live-pip {
   display: inline-block;
   width: 6px;
@@ -136,8 +142,8 @@ button.versions-row .versions-subject {
 
 .versions-files li {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-10);
+  align-items: center;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -280,37 +286,8 @@ button.versions-row .versions-subject {
   margin-top: var(--space-4);
 }
 
-button.versions-note-edit {
-  justify-self: start;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 12px;
-  text-decoration: underline;
-  text-decoration-color: var(--text-faint);
-  text-underline-offset: 3px;
-}
-
-button.versions-note-edit:hover {
-  color: var(--text);
-}
-
-.versions-note-form {
-  display: flex;
-  gap: var(--space-6);
-  min-width: 0;
-}
-
-.versions-note-form input {
-  flex: 1;
-  min-width: 0;
-}
-
 .versions-detail-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-10);
 }

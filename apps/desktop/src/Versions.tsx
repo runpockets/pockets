@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "./api";
+import { FileIcon } from "./FileIcon";
+import { formatVersionTag } from "./formatVersion";
 import "./Versions.css";
 
 /** How one file differs from the version before it. */
@@ -23,15 +25,19 @@ export interface VersionSummary {
   changes: FileChange[];
   /** Lines the coding agent added to POCKETS_CHANGES.md for this version. */
   notes: string[];
-  /** The owner's own name for this version; wins over `notes`. */
-  note: string | null;
+  /** `metadata.version` when this install changed it (or started non-default). */
+  manifestVersion?: string | null;
 }
 
 export interface VersionsReport {
   /** Newest first. */
   versions: VersionSummary[];
   /** Synced source that is not live yet, compared with the live version. */
-  pending: { changes: FileChange[]; notes: string[] } | null;
+  pending: {
+    changes: FileChange[];
+    notes: string[];
+    manifestVersion?: string | null;
+  } | null;
   sourceControl: "unlinked" | "untracked" | "git";
 }
 
@@ -86,10 +92,9 @@ export function summarizeChanges(changes: FileChange[]): string {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
-/** The one-line name a version is listed under: the owner's note, else
- *  the agent's notes, else a summary worked out from the changed files. */
+/** The one-line name a version is listed under: the agent's notes, else a
+ *  summary worked out from the changed files. */
 export function versionSubject(version: VersionSummary): string {
-  if (version.note) return version.note;
   if (version.notes.length === 1) return version.notes[0];
   if (version.notes.length > 1) {
     const more = version.notes.length - 1;
@@ -100,9 +105,6 @@ export function versionSubject(version: VersionSummary): string {
   }
   return summarizeChanges(version.changes);
 }
-
-/** Longest note the native side accepts. */
-const MAX_NOTE_CHARS = 200;
 
 /** Total added and removed lines, or `null` when no changed file is text. */
 export function lineTotals(
@@ -175,6 +177,7 @@ function FileList({ changes }: { changes: FileChange[] }) {
             <span aria-hidden="true">{KIND_MARK[change.kind]}</span>
             <span className="visually-hidden">{KIND_WORD[change.kind]}</span>
           </span>
+          <FileIcon path={change.path} />
           <span className="versions-path">{change.path}</span>
           {change.addedLines !== null && change.removedLines !== null ? (
             <span className="versions-file-lines">
@@ -250,10 +253,6 @@ export default function Versions({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-  const [noteError, setNoteError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{
     tone: "ok" | "error";
     message: string;
@@ -268,7 +267,6 @@ export default function Versions({
   useEffect(() => {
     restoreSeqRef.current += 1;
     setExpanded(null);
-    setEditing(null);
     setConfirming(null);
     setRestoring(null);
     setOutcome(null);
@@ -301,32 +299,6 @@ export default function Versions({
     },
     [],
   );
-
-  function startEditing(version: VersionSummary) {
-    setEditing(version.revisionId);
-    setDraft(version.note ?? "");
-    setNoteError(null);
-  }
-
-  async function saveNote(version: VersionSummary) {
-    if (savingNote) return;
-    setSavingNote(true);
-    setNoteError(null);
-    try {
-      const note = draft.trim();
-      await invoke("set_project_version_note", {
-        id: projectId,
-        revisionId: version.revisionId,
-        note: note === "" ? null : note,
-      });
-      setEditing(null);
-      setRetryToken((token) => token + 1);
-    } catch (err) {
-      setNoteError(errorMessage(err));
-    } finally {
-      setSavingNote(false);
-    }
-  }
 
   async function restore(version: VersionSummary) {
     if (disabled || restoring !== null) return;
@@ -412,6 +384,14 @@ export default function Versions({
               <div className="versions-pending-text">
                 <span>Not live yet</span>
                 <span className="versions-meta">
+                  {pending.manifestVersion && (
+                    <>
+                      <span className="versions-tag">
+                        {formatVersionTag(pending.manifestVersion)}
+                      </span>
+                      {" · "}
+                    </>
+                  )}
                   {pending.changes.length === 1
                     ? "1 file changed"
                     : `${pending.changes.length} files changed`}
@@ -435,12 +415,14 @@ export default function Versions({
                 const isOpen = expanded === version.revisionId;
                 const listId = `versions-files-${version.revisionId}`;
                 const subject = versionSubject(version);
-                // The agent's notes are listed in full when the subject
-                // shows only one of them, or when the owner renamed it.
-                const listNotes =
-                  version.notes.length > 1 ||
-                  (version.note !== null && version.notes.length > 0);
-                const isEditing = editing === version.revisionId;
+                // The agent's notes are listed in full when the subject shows
+                // only the first one.
+                const listNotes = version.notes.length > 1;
+                // The live version is only worth restoring once the folder
+                // has moved on from it.
+                const restorable = canRestore && (!version.live || hasPending);
+                const hasChanges = !version.first && version.changes.length > 0;
+                const hasDetails = listNotes || hasChanges || restorable;
                 const row = (
                   <>
                     <span className="versions-chevron" aria-hidden="true" />
@@ -459,9 +441,17 @@ export default function Versions({
                             {" · "}
                           </>
                         )}
+                        {version.manifestVersion && (
+                          <>
+                            <span className="versions-tag">
+                              {formatVersionTag(version.manifestVersion)}
+                            </span>
+                            {" · "}
+                          </>
+                        )}
                         {formatVersionTime(version.installedAtSeconds)}
                         {version.first ? (
-                          (version.note !== null || version.notes.length > 0) &&
+                          version.notes.length > 0 &&
                           version.files > 0 && (
                             <>
                               {" · "}
@@ -487,100 +477,50 @@ export default function Versions({
                     </span>
                   </>
                 );
-                // The live version is only worth restoring once the folder
-                // has moved on from it.
-                const restorable = canRestore && (!version.live || hasPending);
                 const isConfirming = confirming === version.revisionId;
                 return (
                   <li key={version.revisionId} className="versions-item">
                     <div className="versions-item-head">
-                      <button
-                        type="button"
-                        className="versions-row"
-                        aria-expanded={isOpen}
-                        aria-controls={isOpen ? listId : undefined}
-                        onClick={() => {
-                          setExpanded(isOpen ? null : version.revisionId);
-                          setEditing(null);
-                          setConfirming(null);
-                        }}
-                      >
-                        {row}
-                      </button>
+                      {hasDetails ? (
+                        <button
+                          type="button"
+                          className="versions-row"
+                          aria-expanded={isOpen}
+                          aria-controls={isOpen ? listId : undefined}
+                          onClick={() => {
+                            setExpanded(isOpen ? null : version.revisionId);
+                            setConfirming(null);
+                          }}
+                        >
+                          {row}
+                        </button>
+                      ) : (
+                        <div className="versions-row">{row}</div>
+                      )}
                     </div>
-                    {isOpen && (
+                    {hasDetails && isOpen && (
                       <div id={listId} className="versions-detail">
                         {listNotes && <Notes notes={version.notes} />}
-                        {!version.first && version.changes.length > 0 && (
-                          <FileList changes={version.changes} />
-                        )}
-                        {isEditing ? (
-                          <form
-                            className="versions-note-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void saveNote(version);
-                            }}
-                          >
-                            <input
-                              type="text"
-                              aria-label="Version note"
-                              placeholder="Name this version"
-                              value={draft}
-                              maxLength={MAX_NOTE_CHARS}
-                              disabled={savingNote}
-                              autoFocus
-                              onChange={(event) => setDraft(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  setEditing(null);
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              disabled={savingNote}
-                              onClick={() => setEditing(null)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="button-primary"
-                              disabled={savingNote}
-                            >
-                              {savingNote ? "Saving…" : "Save"}
-                            </button>
-                          </form>
-                        ) : (
+                        {hasChanges && <FileList changes={version.changes} />}
+                        {restorable && (
                           <div className="versions-detail-actions">
                             <button
                               type="button"
-                              className="versions-note-edit"
-                              onClick={() => startEditing(version)}
+                              className="versions-restore"
+                              aria-label={`Restore ${subject}`}
+                              disabled={disabled || restoring !== null}
+                              onClick={() => {
+                                setOutcome(null);
+                                setConfirming(version.revisionId);
+                              }}
                             >
-                              {version.note ? "Edit note" : "Add a note"}
+                              {restoring === version.revisionId
+                                ? "Restoring…"
+                                : "Restore"}
                             </button>
-                            {restorable && (
-                              <button
-                                type="button"
-                                className="versions-restore"
-                                aria-label={`Restore ${subject}`}
-                                disabled={disabled || restoring !== null}
-                                onClick={() => {
-                                  setOutcome(null);
-                                  setConfirming(version.revisionId);
-                                }}
-                              >
-                                {restoring === version.revisionId
-                                  ? "Restoring…"
-                                  : "Restore"}
-                              </button>
-                            )}
                           </div>
                         )}
-                        {restorable && isConfirming && !isEditing && (
+                        {restorable && isConfirming && (
                           <div
                             className="versions-confirm"
                             role="group"
@@ -612,11 +552,6 @@ export default function Versions({
                               </button>
                             </div>
                           </div>
-                        )}
-                        {isEditing && noteError && (
-                          <p className="error" role="alert">
-                            {noteError}
-                          </p>
                         )}
                       </div>
                     )}

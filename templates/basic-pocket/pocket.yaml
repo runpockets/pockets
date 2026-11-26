@@ -6,7 +6,7 @@ metadata:
   version: "0.1.0"
   description: A small persistent web app you control.
 runtime:
-  image: localhost/pockets-__POCKET_ID__:0.1.0
+  image: localhost/pockets-__POCKET_ID__:local
   architectures: [__POCKET_ARCH__]
 web:
   port: 8080

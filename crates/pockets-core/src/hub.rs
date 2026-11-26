@@ -618,6 +618,16 @@ fn audit_directory_hygiene(root: &Path) -> Vec<String> {
     issues
 }
 
+fn format_version_tag(version: &str) -> String {
+    let trimmed = version.trim();
+    let bare = trimmed.trim_start_matches(['v', 'V']);
+    if bare.is_empty() {
+        trimmed.to_owned()
+    } else {
+        format!("v{bare}")
+    }
+}
+
 fn url_encode_query(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
@@ -691,8 +701,8 @@ pub async fn check_hub_submission(
             label: "pocket.yaml manifest".into(),
             status: "warn".into(),
             detail: format!(
-                "Valid manifest (v{}), currently targets only {}. Consider declaring [arm64, amd64] for Mac & Linux users.",
-                project.manifest.metadata.version,
+                "Valid manifest ({}), currently targets only {}. Consider declaring [arm64, amd64] for Mac & Linux users.",
+                format_version_tag(&project.manifest.metadata.version),
                 project
                     .manifest
                     .runtime
@@ -709,8 +719,9 @@ pub async fn check_hub_submission(
             label: "pocket.yaml manifest".into(),
             status: "pass".into(),
             detail: format!(
-                "Valid manifest (id '{}', v{}, arm64 + amd64).",
-                project.manifest.metadata.id, project.manifest.metadata.version
+                "Valid manifest (id '{}', {}, arm64 + amd64).",
+                project.manifest.metadata.id,
+                format_version_tag(&project.manifest.metadata.version)
             ),
         });
     }
@@ -809,8 +820,8 @@ pub async fn check_hub_submission(
                                 label: "Public GitHub repository".into(),
                                 status: "pass".into(),
                                 detail: format!(
-                                    "Verified public repo {slug} (pocket.yaml v{} + Containerfile).",
-                                    remote_manifest.metadata.version
+                                    "Verified public repo {slug} (pocket.yaml {} + Containerfile).",
+                                    format_version_tag(&remote_manifest.metadata.version)
                                 ),
                             });
                         }

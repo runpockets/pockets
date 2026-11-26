@@ -87,6 +87,10 @@ If the user plans to publish this Pocket to GitHub and submit it to Pockets Hub:
 
 - Update `metadata.description` in `pocket.yaml` with a clear one-line summary
   of the app (this text is shown on both Hub cards and Live Pocket cards).
+- Bumping `metadata.version` in `pocket.yaml` is optional during everyday
+  development — Pockets tracks every Build/Update automatically in **Versions**
+  using `POCKETS_CHANGES.md`. Update `metadata.version` (for example `0.2.0` or
+  `1.0.0`) when you want to label a milestone or release for Hub users.
 - For pure dependency-free Node apps with no native binaries, declare
   `architectures: [arm64, amd64]` in `pocket.yaml` so both Apple Silicon and
   Linux/Intel users can pull and build it.

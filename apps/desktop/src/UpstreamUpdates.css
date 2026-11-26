@@ -1,0 +1,98 @@
+.upstream,
+.upstream-body {
+  min-width: 0;
+}
+
+.upstream-disclosure-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upstream-pip {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--warn);
+}
+
+.upstream-body {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.upstream-source {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.upstream-repo-link {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 3px;
+}
+
+.upstream-repo-link:hover {
+  color: var(--text);
+}
+
+.upstream-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.upstream-body .hint,
+.upstream-body .error {
+  margin: 0;
+}
+
+.upstream-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.upstream-notes li {
+  position: relative;
+  padding-left: 1.4ch;
+  overflow-wrap: anywhere;
+}
+
+.upstream-notes li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  color: var(--text-dim);
+}
+
+.upstream-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.upstream-actions button {
+  height: 28px;
+  padding: 0 var(--space-10);
+}
+
+.upstream-confirm {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--selected) 35%, var(--surface));
+}
+
+.upstream-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-6);
+}

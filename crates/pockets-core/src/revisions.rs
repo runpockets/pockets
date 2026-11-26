@@ -314,15 +314,20 @@ pub(crate) fn restore_working(
     source::restore_working_snapshot(store, &project.id, &record.project, archived)
 }
 
-/// The verified archived files of one revision, read-only. The archived
-/// snapshot must reproduce its own record through the guarded capture,
-/// exactly as [`restore_working`] requires, so a corrupt or symlinked
-/// revision is reported rather than compared.
-pub(crate) fn revision_files(
+/// The verified archived snapshot of one revision, read-only: its manifest
+/// version and captured files. The archived snapshot must reproduce its own
+/// record through the guarded capture, exactly as [`restore_working`] requires,
+/// so a corrupt or symlinked revision is reported rather than compared.
+pub(crate) struct RevisionSnapshot {
+    pub manifest_version: String,
+    pub files: Vec<(String, Vec<u8>)>,
+}
+
+pub(crate) fn revision_snapshot(
     store: &Store,
     project_id: &str,
     revision_id: &str,
-) -> Result<Vec<(String, Vec<u8>)>, String> {
+) -> Result<RevisionSnapshot, String> {
     validate_revision_id(revision_id)?;
     let project = store.load(project_id)?;
     let revisions = checked_namespace(store, &project.id)?
@@ -331,7 +336,19 @@ pub(crate) fn revision_files(
     let archived_dir = revisions.join(revision_id).join(REVISION_SOURCE);
     let archived = source::capture_record_files(&archived_dir, &record.project.files)?;
     source::verify_against_record("the archived source", &archived, &record.project)?;
-    Ok(archived)
+    Ok(RevisionSnapshot {
+        manifest_version: record.project.manifest.metadata.version,
+        files: archived,
+    })
+}
+
+/// The verified archived files of one revision, read-only.
+pub(crate) fn revision_files(
+    store: &Store,
+    project_id: &str,
+    revision_id: &str,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    Ok(revision_snapshot(store, project_id, revision_id)?.files)
 }
 
 /// The project-local revision namespace path, derived from

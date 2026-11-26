@@ -59,23 +59,3 @@ pub async fn list_project_versions(
         .await
         .map_err(|_| "Reading version history was interrupted.".to_owned())?
 }
-
-/// Names a recorded version in the owner's own words, or clears the name.
-pub async fn set_project_version_note(
-    ctx: &AppContext,
-    id: String,
-    revision_id: String,
-    note: Option<String>,
-) -> Result<(), String> {
-    // An Update appends to the same log; never write it concurrently.
-    let _building = ctx
-        .build_jobs
-        .try_claim()
-        .ok_or("Wait for the current Build/Update to finish before naming a version.")?;
-    let store = ctx.store();
-    tokio::task::spawn_blocking(move || {
-        crate::versions::set_note(&store, &id, &revision_id, note.as_deref())
-    })
-    .await
-    .map_err(|_| "Saving the version note was interrupted.".to_owned())?
-}

@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { invoke } from "./api";
+import { formatVersionTag } from "./formatVersion";
 import Versions, {
   formatVersionTime,
   lineTotals,
@@ -41,7 +42,6 @@ const REPORT: VersionsReport = {
       first: false,
       files: 4,
       notes: [],
-      note: null,
       changes: [
         change("public/app.js", "modified", 30, 6),
         change("public/styles.css", "modified", 12, 2),
@@ -54,7 +54,6 @@ const REPORT: VersionsReport = {
       first: false,
       files: 4,
       notes: [],
-      note: null,
       changes: [
         change("public/settings.js", "added", 81, 0),
         change("public/index.html", "modified", 7, 3),
@@ -67,7 +66,6 @@ const REPORT: VersionsReport = {
       first: true,
       files: 11,
       notes: [],
-      note: null,
       changes: [],
     },
   ],
@@ -197,13 +195,10 @@ describe("Versions", () => {
     expect(items[2].querySelector(".versions-meta")?.textContent).not.toContain(
       "11 files",
     );
-    // The first version has nothing to compare with: opening it lists no
-    // files, only the note action.
-    fireEvent.click(within(items[2]).getByRole("button", { name: /First/ }));
+    // The first version has nothing to compare with and is not restorable here,
+    // so it stays a non-expandable row.
+    expect(within(items[2]).queryByRole("button")).toBeNull();
     expect(items[2].querySelector(".versions-files")).toBeNull();
-    expect(
-      within(items[2]).getByRole("button", { name: "Add a note" }),
-    ).toBeTruthy();
   });
 
   it("expands a version into its changed files", async () => {
@@ -321,7 +316,8 @@ describe("Versions restore", () => {
       openVersions();
       const list = await screen.findByRole("list", { name: "Versions" });
       for (const item of within(list).getAllByRole("listitem")) {
-        fireEvent.click(within(item).getAllByRole("button")[0]);
+        const [toggle] = within(item).queryAllByRole("button");
+        if (toggle) fireEvent.click(toggle);
         expect(
           within(item).queryByRole("button", { name: /^Restore/ }),
         ).toBeNull();
@@ -470,7 +466,7 @@ describe("Versions restore", () => {
 describe("Version notes", () => {
   const base = REPORT.versions[1];
 
-  it("names a version by the owner's note, then the agent's notes, then its files", () => {
+  it("names a version by the agent's notes, then its files", () => {
     expect(versionSubject(base)).toBe("Add settings.js, update index.html");
     expect(versionSubject({ ...base, notes: ["Add a settings page"] })).toBe(
       "Add a settings page",
@@ -481,9 +477,6 @@ describe("Version notes", () => {
         notes: ["Add a settings page", "Fix the header"],
       }),
     ).toBe("Add a settings page and 1 more change");
-    expect(
-      versionSubject({ ...base, notes: ["a", "b", "c"], note: "Launch day" }),
-    ).toBe("Launch day");
     expect(versionSubject(REPORT.versions[2])).toBe("First version · 11 files");
   });
 
@@ -536,88 +529,33 @@ describe("Version notes", () => {
     );
   });
 
-  it("saves, edits and clears the owner's note, then refetches", async () => {
-    let report: VersionsReport = REPORT;
-    invokeMock.mockImplementation(async (command, args) => {
-      if (command === "list_project_versions") return report;
-      if (command === "set_project_version_note") {
-        const { note } = args as { note: string | null };
-        report = {
-          ...report,
-          versions: report.versions.map((version, index) =>
-            index === 1 ? { ...version, note } : version,
-          ),
-        };
-        return null;
-      }
-      throw new Error(`Unexpected command: ${command}`);
-    });
+  it("shows milestone manifestVersion tags without doubling leading v", async () => {
+    expect(formatVersionTag("0.2.0")).toBe("v0.2.0");
+    expect(formatVersionTag("v1.0.0")).toBe("v1.0.0");
+    expect(formatVersionTag("V2.1.0")).toBe("v2.1.0");
+    expect(formatVersionTag("  0.3.0  ")).toBe("v0.3.0");
+
+    invokeMock.mockResolvedValue({
+      ...REPORT,
+      versions: [
+        { ...REPORT.versions[0], manifestVersion: "v0.2.0" },
+        REPORT.versions[1],
+        REPORT.versions[2],
+      ],
+      pending: { ...REPORT.pending!, manifestVersion: "0.3.0" },
+    } satisfies VersionsReport);
     render(<Versions projectId="p-1" workingDigest="w" installedDigest="i" />);
     openVersions();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /Add settings\.js, update index\.html/,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Add a note" }));
-    const input = screen.getByRole("textbox", { name: "Version note" });
-    fireEvent.change(input, { target: { value: "  Settings page  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(invokeMock).toHaveBeenCalledWith("set_project_version_note", {
-      id: "p-1",
-      revisionId: "b".repeat(32),
-      note: "Settings page",
-    });
-    expect(
-      await screen.findByRole("button", { name: /^Settings page/ }),
-    ).toBeTruthy();
+    const pending = (await screen.findByText("Not live yet")).closest(
+      ".versions-pending",
+    )!;
+    expect(pending.querySelector(".versions-tag")?.textContent).toBe("v0.3.0");
 
-    // Clearing the note falls back to the file-based summary.
-    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
-      target: { value: "" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(
-      await screen.findByRole("button", {
-        name: /Add settings\.js, update index\.html/,
-      }),
-    ).toBeTruthy();
-    expect(invokeMock).toHaveBeenLastCalledWith(
-      "list_project_versions",
-      expect.anything(),
-    );
-  });
-
-  it("cancels editing with Escape and reports a refused note", async () => {
-    invokeMock.mockImplementation(async (command) => {
-      if (command === "list_project_versions") return REPORT;
-      if (command === "set_project_version_note")
-        throw "A version note is one line of at most 200 characters.";
-      throw new Error(`Unexpected command: ${command}`);
-    });
-    render(<Versions projectId="p-1" workingDigest="w" installedDigest="i" />);
-    openVersions();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /Add settings\.js, update index\.html/,
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Add a note" }));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Version note" }), {
-      key: "Escape",
-    });
-    expect(screen.queryByRole("textbox", { name: "Version note" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Add a note" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
-      target: { value: "Too long" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "at most 200",
-    );
-    expect(screen.getByRole("textbox", { name: "Version note" })).toBeTruthy();
+    const list = screen.getByRole("list", { name: "Versions" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items[0].querySelector(".versions-tag")?.textContent).toBe("v0.2.0");
+    expect(items[1].querySelector(".versions-tag")).toBeNull();
+    expect(items[2].querySelector(".versions-tag")).toBeNull();
   });
 });

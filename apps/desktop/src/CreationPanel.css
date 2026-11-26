@@ -519,17 +519,29 @@ button.creation-new:hover:not(:disabled) .creation-new-title {
 .creation-files {
   list-style: none;
   display: grid;
-  gap: 0.25rem;
-  max-height: 12rem;
+  gap: 0.2rem;
+  max-height: 16rem;
   margin: 0.5rem 0 0;
-  padding: 0.25rem 0.6rem;
+  padding: 0.75rem 0.9rem;
   border: 1px solid var(--border);
   background: var(--surface);
   overflow-y: auto;
 }
 
 .creation-files li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
+}
+
+.creation-files li code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .creation-digest {
@@ -782,6 +794,7 @@ button.creation-new:hover:not(:disabled) .creation-new-title {
 .creation-card-disclosures .creation-data-body,
 .creation-card-disclosures .revision-history-body,
 .creation-card-disclosures .versions-body,
+.creation-card-disclosures .upstream-body,
 .creation-card-disclosures .creation-review {
   margin: 0;
   padding: var(--space-4) 1.15rem 1rem calc(1.15rem + 16px);

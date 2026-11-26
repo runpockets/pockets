@@ -26,6 +26,7 @@ import { TitleBar } from "./TitleBar";
 import { ColumnDivider } from "./ColumnDivider";
 import { FullscreenProvider, useFullscreen } from "./useFullscreen";
 import { OverlayProvider } from "./OverlayContext";
+import { formatVersionTag } from "./formatVersion";
 import {
   CHAT_MIN_WIDTH,
   PREVIEW_MIN_WIDTH,
@@ -1369,7 +1370,9 @@ function PocketPanel({
         <>
           <div className="pocket-heading">
             <h3 className="pocket-name">{manifest.value.metadata.name}</h3>
-            <span className="chip">v{manifest.value.metadata.version}</span>
+            <span className="chip">
+              {formatVersionTag(manifest.value.metadata.version)}
+            </span>
           </div>
           <p className="pocket-description">
             {manifest.value.metadata.description}
