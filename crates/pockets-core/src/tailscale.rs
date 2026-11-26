@@ -101,7 +101,7 @@ pub struct TailscaleShareView {
     /// present only when `active` is `true`.
     pub url: Option<String>,
     /// Direct port-addressed tailnet HTTPS URL (`https://<node>.<tailnet>.ts.net:<port>`),
-    /// which remains reachable even after quitting Pockets Desktop.
+    /// which remains reachable even if the Pockets daemon is stopped.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direct_url: Option<String>,
     /// Launcher URL (`https://<node>.<tailnet>.ts.net`) when port 443 is active.

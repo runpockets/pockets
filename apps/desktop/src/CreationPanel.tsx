@@ -2223,6 +2223,7 @@ function ProjectCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tailscaleCopied, setTailscaleCopied] = useState(false);
+  const [tailscaleDirectCopied, setTailscaleDirectCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
@@ -2249,6 +2250,14 @@ function ProjectCard({
     const timer = window.setTimeout(() => setTailscaleCopied(false), 1500);
     return () => window.clearTimeout(timer);
   }, [tailscaleCopied]);
+  useEffect(() => {
+    if (!tailscaleDirectCopied) return;
+    const timer = window.setTimeout(
+      () => setTailscaleDirectCopied(false),
+      1500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [tailscaleDirectCopied]);
   const copyAddress = (url: string) => {
     void navigator.clipboard
       ?.writeText(url)
@@ -2261,6 +2270,14 @@ function ProjectCard({
     void navigator.clipboard
       ?.writeText(url)
       .then(() => setTailscaleCopied(true))
+      .catch(() => {
+        /* nothing copied, nothing claimed */
+      });
+  };
+  const copyTailscaleDirectUrl = (url: string) => {
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => setTailscaleDirectCopied(true))
       .catch(() => {
         /* nothing copied, nothing claimed */
       });
@@ -2374,6 +2391,7 @@ function ProjectCard({
     tailscale.directUrl !== tailscaleUrl
       ? tailscale.directUrl
       : null;
+  const tailscaleQrUrl = tailscaleDirectUrl ?? tailscaleUrl;
   const tailscaleNeedsReconnect =
     tailscaleEnabled &&
     !tailscaleActive &&
@@ -2616,14 +2634,14 @@ function ProjectCard({
                         >
                           {copied ? <IconCheckSmall /> : <IconCopy />}
                         </button>
-                        {tailscaleUrl && (
+                        {tailscaleQrUrl && (
                           <button
                             type="button"
                             className="creation-address-tailscale"
                             aria-label={`Show Tailscale QR code for ${project.manifest.metadata.name}`}
                             title="Shared on Tailscale — show QR code"
                             onClick={() =>
-                              onShowTailscaleQr(project, tailscaleUrl)
+                              onShowTailscaleQr(project, tailscaleQrUrl)
                             }
                           >
                             <span
@@ -2814,7 +2832,7 @@ function ProjectCard({
                           className="creation-menu-item"
                           onClick={() => {
                             setMenuOpen(false);
-                            onShowTailscaleQr(project, tailscaleUrl);
+                            onShowTailscaleQr(project, tailscaleQrUrl!);
                           }}
                         >
                           Show Tailscale QR code…
@@ -2965,11 +2983,11 @@ function ProjectCard({
                           className="creation-tailscale-qr-button"
                           aria-label={`Enlarge Tailscale QR code for ${project.manifest.metadata.name}`}
                           onClick={() =>
-                            onShowTailscaleQr(project, tailscaleUrl)
+                            onShowTailscaleQr(project, tailscaleQrUrl!)
                           }
                         >
                           <QrCodeSvg
-                            value={tailscaleUrl}
+                            value={tailscaleQrUrl!}
                             label={`QR code for ${project.manifest.metadata.name} Tailscale URL`}
                             size={104}
                           />
@@ -2977,8 +2995,8 @@ function ProjectCard({
                         <div className="creation-tailscale-qr-copy">
                           <p className="hint">
                             {tailscaleDirectUrl
-                              ? "Named shortcut works while Pockets is open. The direct port URL also stays reachable after quitting Pockets."
-                              : "Scan from another device on your Tailscale network. Stays reachable after quitting Pockets while this Mac and Pocket run."}
+                              ? "Named shortcut (above) works while the Pockets daemon is running. The QR code and direct port URL stay reachable even if the daemon is stopped."
+                              : "Scan from another device on your Tailscale network. Stays reachable while this host and Pocket are running."}
                           </p>
                           {tailscaleDirectUrl && (
                             <p className="creation-tailscale-direct">
@@ -2994,14 +3012,16 @@ function ProjectCard({
                           <div className="creation-tailscale-actions">
                             <button
                               type="button"
-                              onClick={() => copyTailscaleUrl(tailscaleUrl)}
+                              onClick={() =>
+                                copyTailscaleDirectUrl(tailscaleQrUrl!)
+                              }
                             >
-                              {tailscaleCopied ? "Copied" : "Copy URL"}
+                              {tailscaleDirectCopied ? "Copied" : "Copy URL"}
                             </button>
                             <button
                               type="button"
                               onClick={() =>
-                                onShowTailscaleQr(project, tailscaleUrl)
+                                onShowTailscaleQr(project, tailscaleQrUrl!)
                               }
                             >
                               Enlarge QR

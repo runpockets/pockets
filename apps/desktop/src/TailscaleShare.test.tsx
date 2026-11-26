@@ -153,7 +153,18 @@ describe("Tailscale sharing in CreationPanel", () => {
       }),
     ).toBeTruthy();
 
-    // Quick Tailscale pill next to the local address opens the QR modal.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    // Top copy icon copies the named shortcut; Copy URL next to QR copies direct URL.
+    fireEvent.click(manage.getByRole("button", { name: "Copy Tailscale URL" }));
+    expect(writeText).toHaveBeenLastCalledWith(namedUrl);
+    fireEvent.click(manage.getByRole("button", { name: "Copy URL" }));
+    expect(writeText).toHaveBeenLastCalledWith(directUrl);
+
+    // Quick Tailscale pill next to the local address opens the QR modal with the direct URL.
     fireEvent.click(
       manage.getByRole("button", {
         name: "Show Tailscale QR code for Notes Pocket",
@@ -162,7 +173,7 @@ describe("Tailscale sharing in CreationPanel", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Notes Pocket on Tailscale",
     });
-    expect(dialog.textContent).toContain(namedUrl);
+    expect(dialog.textContent).toContain(directUrl);
 
     // Escape closes the QR modal.
     fireEvent.keyDown(window, { key: "Escape" });
