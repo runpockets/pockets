@@ -138,7 +138,11 @@ export default function ExternalWorkspace({
               </details>
             </>
           )}
-          <RuntimeSettings projectId={projectId} disabled={building} />
+          <RuntimeSettings
+            projectId={projectId}
+            disabled={building}
+            defaultEnvironment={linked ? "preview" : "installed"}
+          />
           <HubSubmissionPanel projectId={projectId} />
         </div>
       </div>

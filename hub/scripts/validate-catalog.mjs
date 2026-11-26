@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_CATALOG_BYTES = 512 * 1024;
-const MAX_CATALOG_ENTRIES = 200;
+const MAX_CATALOG_ENTRIES = 64;
 const MAX_ROOT_CONFIG_BYTES = 128 * 1024;
 const MAX_SNAPSHOT_FILES = 2000;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -44,7 +44,7 @@ const FORBIDDEN_CREDENTIAL_NAMES = new Set([
   "id_ecdsa",
 ]);
 const FORBIDDEN_CREDENTIAL_EXTS = new Set([".pem", ".key", ".p12", ".pfx"]);
-const ALLOWED_CATALOG_ENTRY_KEYS = new Set(["repo", "name", "description", "verified", "ref"]);
+const ALLOWED_CATALOG_ENTRY_KEYS = new Set(["repo", "name", "description", "verified"]);
 
 const STARTER_PLACEHOLDER_DESCRIPTIONS = [
   "a small persistent web app you control",
@@ -686,11 +686,6 @@ export function validateCatalogStructure(rawBytes, baseRawBytes = null, options 
     if (entry.verified !== undefined && typeof entry.verified !== "boolean") {
       errors.push(`${scope}.verified must be a boolean.`);
     }
-    if (entry.ref !== undefined) {
-      if (typeof entry.ref !== "string" || !/^[A-Za-z0-9._/-]{1,100}$/.test(entry.ref) || entry.ref.includes("..")) {
-        errors.push(`${scope}.ref must be a valid git ref or commit SHA.`);
-      }
-    }
   });
 
   // PR diff guard: prevent non-maintainers from self-assigning `verified: true`.
@@ -739,7 +734,7 @@ async function githubFetch(url, headers = {}) {
   return fetch(url, { headers: reqHeaders, signal: AbortSignal.timeout(15_000) });
 }
 
-async function validateRemoteRepo(entry) {
+export async function validateRemoteRepo(entry) {
   const errors = [];
   const slug = entry.repo;
   const repoRes = await githubFetch(`https://api.github.com/repos/${slug}`, {
@@ -756,7 +751,7 @@ async function validateRemoteRepo(entry) {
   if (meta.archived) errors.push(`${slug}: archived repositories cannot be listed.`);
   if (meta.disabled) errors.push(`${slug}: disabled repositories cannot be listed.`);
 
-  const ref = entry.ref || meta.default_branch || "HEAD";
+  const ref = meta.default_branch || "HEAD";
   const rawBase = `https://raw.githubusercontent.com/${slug}/${encodeURIComponent(ref)}`;
 
   const [manifestRes, cfRes, treeRes] = await Promise.all([
@@ -794,7 +789,9 @@ async function validateRemoteRepo(entry) {
     const treeJson = await treeRes.json();
     if (treeJson.truncated) {
       errors.push(`${slug}: repository tree is too large for Pockets snapshot limits.`);
-    } else if (Array.isArray(treeJson.tree)) {
+    } else if (!Array.isArray(treeJson.tree)) {
+      errors.push(`${slug}: GitHub returned an invalid repository tree.`);
+    } else {
       const normalized = treeJson.tree
         .filter((node) => node.type === "blob")
         .map((node) => ({
@@ -807,6 +804,8 @@ async function validateRemoteRepo(entry) {
         errors.push(...treeCheck.errors.map((e) => `${slug}: ${e}`));
       }
     }
+  } else {
+    errors.push(`${slug}: could not inspect repository tree (HTTP ${treeRes.status}).`);
   }
 
   return { ok: errors.length === 0, errors, manifestId };

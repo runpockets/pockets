@@ -539,6 +539,7 @@ export default function CreationPanel({
     id: string;
     name: string;
     operation: LifecycleOperation;
+    openAfterStart?: boolean;
   } | null>(null);
   const [lifecycleError, setLifecycleError] = useState<{
     id: string;
@@ -749,19 +750,27 @@ export default function CreationPanel({
     void refresh();
   }, [refresh, refreshKey]);
 
-  // Re-check linked folders silently when the window regains focus (e.g.
-  // switching back from an external editor) so unsynced local edits surface
-  // right away without disabling buttons or background polling.
+  // Re-check linked folders silently when the window regains focus or tab
+  // becomes visible (e.g. switching back from an external editor or SSH
+  // session) so unsynced local edits surface right away without disabling
+  // buttons or background polling.
   useEffect(() => {
-    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+    if (typeof window === "undefined") {
       return;
     }
     const onFocus = () => {
       void refresh(true);
     };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refresh(true);
+      }
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [refresh]);
 
@@ -905,14 +914,14 @@ export default function CreationPanel({
    */
   const startAndOpen = useCallback(
     async (id: string, name: string, afterBuild = false) => {
-      setLifecycle({ id, name, operation: "starting" });
+      setLifecycle({ id, name, operation: "starting", openAfterStart: true });
       setLifecycleError(null);
       let operation: LifecycleOperation = "starting";
       try {
         const started = await invoke<PocketStatus>("start_project", { id });
         applyStatus(id, { status: "ready", value: started });
         operation = "opening";
-        setLifecycle({ id, name, operation });
+        setLifecycle({ id, name, operation, openAfterStart: true });
         await invoke<void>("open_project", { id });
         setLifecycle(null);
         // Refetch the persisted record, then re-read the live status, so the
@@ -941,6 +950,35 @@ export default function CreationPanel({
     (project: Project) =>
       startAndOpen(project.id, project.manifest.metadata.name),
     [startAndOpen],
+  );
+
+  /** Starts a stopped Pocket without opening it in a browser tab. */
+  const handleStart = useCallback(
+    async (project: Project) => {
+      const id = project.id;
+      setLifecycle({
+        id,
+        name: project.manifest.metadata.name,
+        operation: "starting",
+        openAfterStart: false,
+      });
+      setLifecycleError(null);
+      try {
+        const value = await invoke<PocketStatus>("start_project", { id });
+        applyStatus(id, { status: "ready", value });
+      } catch (err) {
+        setLifecycleError({
+          id,
+          name: project.manifest.metadata.name,
+          operation: "starting",
+          message: errorMessage(err),
+        });
+        await loadStatus(id);
+      } finally {
+        setLifecycle(null);
+      }
+    },
+    [applyStatus, loadStatus],
   );
 
   /**
@@ -1600,6 +1638,12 @@ export default function CreationPanel({
       operation={
         lifecycle && lifecycle.id === project.id ? lifecycle.operation : null
       }
+      startingOnly={
+        lifecycle !== null &&
+        lifecycle.id === project.id &&
+        lifecycle.operation === "starting" &&
+        !lifecycle.openAfterStart
+      }
       operationError={
         lifecycleError && lifecycleError.id === project.id
           ? lifecycleError
@@ -1609,6 +1653,7 @@ export default function CreationPanel({
       runtimeReady={runtimeReady}
       onBuild={handleBuild}
       onOpen={handleOpen}
+      onStart={handleStart}
       onStop={handleStop}
       onAskDelete={handleAskDelete}
       onExportData={handleExportData}
@@ -2088,11 +2133,13 @@ function ProjectCard({
   status,
   usage,
   operation,
+  startingOnly,
   operationError,
   busy,
   runtimeReady,
   onBuild,
   onOpen,
+  onStart,
   onStop,
   onAskDelete,
   onExportData,
@@ -2136,6 +2183,7 @@ function ProjectCard({
   status: LoadState<PocketStatus> | undefined;
   usage: PocketUsage | null;
   operation: LifecycleOperation | null;
+  startingOnly: boolean;
   operationError: {
     id: string;
     operation: LifecycleOperation;
@@ -2152,6 +2200,7 @@ function ProjectCard({
    */
   onBuild: (project: Project, openAfter: boolean) => void;
   onOpen: (project: Project) => void;
+  onStart: (project: Project) => void;
   onStop: (project: Project) => void;
   onAskDelete?: (project: Project) => void;
   onExportData: (project: Project) => void;
@@ -2248,9 +2297,12 @@ function ProjectCard({
   const succeeded = build !== null && !build.running && !failed;
   const statusValue = status?.status === "ready" ? status.value : null;
   const running = statusValue?.state === "running";
+  const stopped = statusValue?.state === "stopped";
   // Open needs a trustworthy status like the Hello Pocket controls; native
   // Start/Open validate readiness themselves.
   const canOpen = !busy && runtimeReady && statusValue !== null;
+  const canStart = !busy && runtimeReady && stopped;
+  const showStart = stopped || startingOnly;
   // Native Stop validates container ownership itself, so it stays available
   // even when status inspection failed (e.g. an unsafe or missing port
   // mapping) and the container is known to be Pockets-owned.
@@ -2290,7 +2342,8 @@ function ProjectCard({
   // `open_project`), which is idempotent: it starts a stopped Pocket and
   // opens the browser for one that is already ready. So the word describes
   // what the click does from here.
-  const visitBusy = operation === "starting" || operation === "opening";
+  const visitBusy =
+    (operation === "starting" && !startingOnly) || operation === "opening";
   const visitWord = running && statusValue?.ready === true ? "Visit" : "Open";
   const usageRunning = running && usage?.state === "running";
   const usageCpu =
@@ -2666,7 +2719,8 @@ function ProjectCard({
               <button
                 type="button"
                 className="creation-build"
-                disabled={busy || !runtimeReady}
+                disabled={busy || !runtimeReady || !hasChanges}
+                title={!hasChanges ? "No source changes to update" : undefined}
                 onClick={() => onBuild(project, false)}
               >
                 {build?.running
@@ -2687,18 +2741,32 @@ function ProjectCard({
                 Manage
               </button>
             )}
-            {built && (
-              <button
-                type="button"
-                className="creation-stop"
-                aria-label={inWorkspace ? "Stop installed app" : undefined}
-                onClick={() => onStop(project)}
-                disabled={!canStop}
-              >
-                <span className="creation-stop-icon" aria-hidden="true" />
-                {operation === "stopping" ? LIFECYCLE_LABELS.stopping : "Stop"}
-              </button>
-            )}
+            {built &&
+              (showStart ? (
+                <button
+                  type="button"
+                  className="creation-start"
+                  aria-label={inWorkspace ? "Start installed app" : undefined}
+                  onClick={() => onStart(project)}
+                  disabled={!canStart}
+                >
+                  <span className="creation-start-icon" aria-hidden="true" />
+                  {startingOnly ? LIFECYCLE_LABELS.starting : "Start"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="creation-stop"
+                  aria-label={inWorkspace ? "Stop installed app" : undefined}
+                  onClick={() => onStop(project)}
+                  disabled={!canStop}
+                >
+                  <span className="creation-stop-icon" aria-hidden="true" />
+                  {operation === "stopping"
+                    ? LIFECYCLE_LABELS.stopping
+                    : "Stop"}
+                </button>
+              ))}
             {(onAskDelete || (running && statusValue?.url)) && (
               <div className="creation-menu" ref={menuRef}>
                 <button

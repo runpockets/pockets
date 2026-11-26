@@ -307,7 +307,7 @@ describe("PreviewPanel without a session", () => {
     await settleFirstRead();
     expect(
       within(
-        screen.getByRole("region", { name: "Workspace preview" }),
+        screen.getByRole("region", { name: "Live Preview Workspace" }),
       ).queryByText("Kraken pricing"),
     ).toBeNull();
     await tickOnce();
@@ -1029,10 +1029,10 @@ describe("PreviewPanel title bar", () => {
     // still labelled by the same heading, now living in its title slot.
     const bar = screen.getByRole("toolbar", { name: "Preview" });
     expect(bar).toBeTruthy();
-    const heading = screen.getByRole("heading", { name: "Workspace preview" });
+    const heading = screen.getByRole("heading", { name: "Live Preview Workspace" });
     expect(heading.id).toBe("preview-heading");
     expect(
-      screen.getByRole("region", { name: "Workspace preview" }),
+      screen.getByRole("region", { name: "Live Preview Workspace" }),
     ).toBeTruthy();
   });
 
@@ -1341,7 +1341,7 @@ describe("preview layout contract", () => {
     expect(
       screen.getByText("cloud-vm.tail00000.ts.net:49312"),
     ).toBeTruthy();
-    const iframe = screen.getByTitle("Workspace preview") as HTMLIFrameElement;
+    const iframe = screen.getByTitle("Live Preview Workspace") as HTMLIFrameElement;
     expect(iframe.src).toBe("https://cloud-vm.tail00000.ts.net:49312/");
   });
 });

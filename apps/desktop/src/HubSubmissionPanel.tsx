@@ -48,6 +48,7 @@ export default function HubSubmissionPanel({
   const [repoInput, setRepoInput] = useState("");
   const [repoDirty, setRepoDirty] = useState(false);
   const [report, setReport] = useState<HubSubmissionReport | null>(null);
+  const [checkedInput, setCheckedInput] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +77,8 @@ export default function HubSubmissionPanel({
   const runCheck = useCallback(
     async (repoOverride: string | undefined, verifyRemote: boolean) => {
       const current = ++epoch.current;
+      setCheckedInput(null);
+      setCopied(false);
       if (verifyRemote) setVerifying(true);
       else setLoading(true);
       setError(null);
@@ -87,6 +90,7 @@ export default function HubSubmissionPanel({
         });
         if (epoch.current !== current) return;
         setReport(next);
+        setCheckedInput(repoOverride?.trim() || next.detectedRepo || "");
         if (!repoOverride && next.detectedRepo) {
           setRepoInput((prev) => (prev === "" ? next.detectedRepo! : prev));
         }
@@ -112,7 +116,7 @@ export default function HubSubmissionPanel({
   async function copyEntry() {
     if (!report?.catalogEntryJson) return;
     try {
-      await navigator.clipboard?.writeText(report.catalogEntryJson);
+      await navigator.clipboard.writeText(report.catalogEntryJson);
       setCopied(true);
       if (copiedTimer.current !== null) {
         window.clearTimeout(copiedTimer.current);
@@ -130,9 +134,8 @@ export default function HubSubmissionPanel({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  const canOpenPr = Boolean(
-    report && report.readyToSubmit && report.remoteVerified && !verifying,
-  );
+  const reportMatchesInput = checkedInput === repoInput.trim();
+  const canOpenPr = reportMatchesInput && report?.readyToSubmit && report.remoteVerified;
 
   return (
     <details
@@ -191,6 +194,8 @@ export default function HubSubmissionPanel({
                       onChange={(event) => {
                         setRepoDirty(true);
                         setRepoInput(event.target.value);
+                        setCopied(false);
+                        setError(null);
                       }}
                     />
                     <button
@@ -209,7 +214,7 @@ export default function HubSubmissionPanel({
                 className="hub-submission-checks"
                 aria-label="Hub submission checks"
               >
-                {report.checks.map((check) => (
+                {report.checks.filter((check) => reportMatchesInput || check.id !== "github").map((check) => (
                   <li
                     key={check.id}
                     className="hub-submission-check"
@@ -231,7 +236,7 @@ export default function HubSubmissionPanel({
                 ))}
               </ul>
 
-              {report.catalogEntryJson && (
+              {reportMatchesInput && report.catalogEntryJson && (
                 <div className="hub-submission-snippet">
                   <div className="hub-submission-snippet-head">
                     <span className="hub-submission-snippet-title">

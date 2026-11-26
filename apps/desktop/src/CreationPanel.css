@@ -647,7 +647,8 @@ button.creation-new:hover:not(:disabled) .creation-new-title {
   overflow: hidden;
 }
 
-.creation-card-buttons > button.creation-stop {
+.creation-card-buttons > button.creation-stop,
+.creation-card-buttons > button.creation-start {
   flex: none;
   gap: 7px;
 }
@@ -658,6 +659,16 @@ button.creation-new:hover:not(:disabled) .creation-new-title {
   width: 8px;
   height: 8px;
   background: currentColor;
+}
+
+.creation-start-icon {
+  flex: none;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4.5px 0 4.5px 8px;
+  border-color: transparent transparent transparent currentColor;
 }
 
 /* The ⋯ menu: a square trigger and a small list anchored under it. */

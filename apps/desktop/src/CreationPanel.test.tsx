@@ -206,7 +206,7 @@ describe("CreationPanel import flow", () => {
     await act(async () => completeBuild(draft));
   });
 
-  it("offers Update in the workspace for an installed linked Pocket even before manual sync", async () => {
+  it("disables Update in the workspace when an installed linked Pocket has no source changes, and enables it once edits appear", async () => {
     const installedLinked: Project = {
       ...INSTALLED,
       phase: "installed",
@@ -217,8 +217,9 @@ describe("CreationPanel import flow", () => {
         sourceDigest: INSTALLED.sourceDigest,
       },
     };
+    let currentProject: Project = installedLinked;
     invokeMock.mockImplementation(async (command) => {
-      if (command === "list_projects") return [installedLinked];
+      if (command === "list_projects") return [currentProject];
       if (command === "pocket_thumb") return null;
       if (command === "project_status")
         return {
@@ -232,7 +233,7 @@ describe("CreationPanel import flow", () => {
       if (command === "build_project") return installedLinked;
       throw new Error(`Unexpected command: ${command}`);
     });
-    function AppFixture() {
+    function AppFixture({ project }: { project: Project }) {
       const [host, setHost] = useState<HTMLDivElement | null>(null);
       return (
         <>
@@ -241,20 +242,37 @@ describe("CreationPanel import flow", () => {
             <CreationPanel
               runtimeReady
               page="live"
-              workspace={host ? { project: installedLinked, host } : undefined}
+              workspace={host ? { project, host } : undefined}
             />
           </div>
         </>
       );
     }
-    render(<AppFixture />);
+    const { rerender } = render(<AppFixture project={installedLinked} />);
     const workspace = within(
       screen.getByRole("region", { name: "Development controls" }),
     );
     const update = await workspace.findByRole("button", { name: "Update" });
-    await waitFor(() => expect(update.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(workspace.getByRole("button", { name: "Visit" })).toBeTruthy(),
+    );
+    expect(update.hasAttribute("disabled")).toBe(true);
     expect(update.className).not.toContain("button-primary");
-    fireEvent.click(update);
+
+    // Once the linked folder has unsynced edits, Update becomes enabled and
+    // triggers build_project.
+    const editedLinked: Project = {
+      ...installedLinked,
+      unsyncedChanges: true,
+    };
+    currentProject = editedLinked;
+    rerender(<AppFixture project={editedLinked} />);
+    const enabledUpdate = workspace.getByRole("button", { name: "Update" });
+    await waitFor(() =>
+      expect(enabledUpdate.hasAttribute("disabled")).toBe(false),
+    );
+    expect(enabledUpdate.className).toContain("button-primary");
+    fireEvent.click(enabledUpdate);
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("build_project", {
         id: installedLinked.id,
@@ -2657,5 +2675,86 @@ describe("pocket card layout", () => {
     expect(displayAddress("https://pocket-p2.localhost:18789/")).toBe(
       "pocket-p2.localhost:18789",
     );
+  });
+});
+
+describe("CreationPanel Stop/Start toggle without opening", () => {
+  it("turns Stop into Start when stopped and starts without calling open_project", async () => {
+    const site = "http://timer-pocket.localhost:18789";
+    let running = true;
+
+    invokeMock.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_projects":
+          return [INSTALLED];
+        case "project_status":
+          return running
+            ? {
+                state: "running",
+                url: site,
+                message: "Answering HTTP health checks.",
+                ready: true,
+              }
+            : {
+                state: "stopped",
+                url: null,
+                message: "Not running.",
+                ready: false,
+              };
+        case "stop_project":
+          running = false;
+          return {
+            state: "stopped",
+            url: null,
+            message: "Not running.",
+            ready: false,
+          };
+        case "start_project":
+          running = true;
+          return {
+            state: "running",
+            url: site,
+            message: "Answering HTTP health checks.",
+            ready: true,
+          };
+        case "pocket_thumb":
+        case "pocket_thumb_capture":
+          return null;
+        case "project_revisions":
+        case "project_versions":
+          return [];
+        default:
+          throw new Error(`Unexpected command: ${cmd}`);
+      }
+    });
+
+    render(<CreationPanel runtimeReady={true} page="live" />);
+    const card = await screen.findByRole("article", { name: "Timer Pocket" });
+    await within(card).findByText("Running");
+
+    // Running card shows enabled Stop and Visit.
+    const stopButton = within(card).getByRole<HTMLButtonElement>("button", {
+      name: "Stop",
+    });
+    expect(stopButton.disabled).toBe(false);
+    expect(within(card).queryByRole("button", { name: "Start" })).toBeNull();
+
+    // Pressing Stop replaces Stop with an enabled Start button.
+    fireEvent.click(stopButton);
+    await within(card).findByText("Stopped");
+    expect(within(card).queryByRole("button", { name: "Stop" })).toBeNull();
+    const startButton = within(card).getByRole<HTMLButtonElement>("button", {
+      name: "Start",
+    });
+    expect(startButton.disabled).toBe(false);
+
+    // Pressing Start invokes start_project only — never open_project — and
+    // flips the button back to Stop once running.
+    fireEvent.click(startButton);
+    await within(card).findByText("Running");
+    expect(invokeMock).toHaveBeenCalledWith("start_project", { id: "p-2" });
+    expect(invokeMock).not.toHaveBeenCalledWith("open_project", { id: "p-2" });
+    expect(within(card).getByRole("button", { name: "Stop" })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Start" })).toBeNull();
   });
 });

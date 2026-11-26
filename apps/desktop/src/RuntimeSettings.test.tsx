@@ -51,7 +51,11 @@ it("keeps secrets write-only and loads each environment on demand", async () => 
   fireEvent.change(secret, { target: { value: "replacement-fixture" } });
   fireEvent.click(screen.getByRole("button", { name: "Save replacement" }));
   expect(secret.value).toBe("");
-  expect(await screen.findByText("Variable saved.")).toBeTruthy();
+  expect(
+    await screen.findByText(
+      "Variable saved. Stop and start the preview to apply changes.",
+    ),
+  ).toBeTruthy();
   expect(invokeMock).toHaveBeenCalledWith("change_project_runtime_settings", {
     id: "sample-project",
     environment: "preview",
@@ -190,4 +194,47 @@ it("renders declared variables with purpose/type and prefills detected source va
     screen.queryByRole("button", { name: "Use detected variable EXTRA_FLAG" }),
   ).toBeNull();
   expect(screen.getByText("Added manually")).toBeTruthy();
+});
+
+it("can default to Installed app and instructs to stop and start the installed app after saving", async () => {
+  invokeMock.mockImplementation(async (command) => {
+    if (command === "project_runtime_settings") {
+      return { variables: [] };
+    }
+    if (command === "change_project_runtime_settings") {
+      return { variables: [{ name: "API_KEY", kind: "secret" }] };
+    }
+    throw new Error(`Unexpected command ${command}`);
+  });
+
+  render(
+    <RuntimeSettings
+      projectId="sample-project"
+      disabled={false}
+      defaultEnvironment="installed"
+    />,
+  );
+  openSection();
+
+  expect(
+    await screen.findByText("No variables saved for this environment."),
+  ).toBeTruthy();
+  expect(invokeMock).toHaveBeenCalledWith("project_runtime_settings", {
+    id: "sample-project",
+    environment: "installed",
+  });
+
+  fireEvent.change(screen.getByLabelText("Variable name"), {
+    target: { value: "API_KEY" },
+  });
+  fireEvent.change(screen.getByLabelText("Secret value"), {
+    target: { value: "secret-123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add variable" }));
+
+  expect(
+    await screen.findByText(
+      "Variable saved. Stop and start the installed app to apply changes.",
+    ),
+  ).toBeTruthy();
 });

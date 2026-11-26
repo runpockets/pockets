@@ -35,7 +35,7 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .external-workspace-content h2,
@@ -292,6 +292,16 @@
   margin-inline-start: var(--space-8);
   color: var(--warn);
   font-size: 12px;
+}
+
+.runtime-settings-status {
+  margin: 0;
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .runtime-settings,

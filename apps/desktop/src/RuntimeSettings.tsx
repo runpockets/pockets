@@ -36,12 +36,15 @@ type SummaryCounts = {
 export default function RuntimeSettings({
   projectId,
   disabled,
+  defaultEnvironment = "preview",
 }: {
   projectId: string;
   disabled: boolean;
+  defaultEnvironment?: Environment;
 }) {
   const [open, setOpen] = useState(false);
-  const [environment, setEnvironment] = useState<Environment>("preview");
+  const [environment, setEnvironment] =
+    useState<Environment>(defaultEnvironment);
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<SummaryCounts | null>(null);
 
@@ -71,14 +74,15 @@ export default function RuntimeSettings({
       {open && (
         <div className="runtime-settings">
           <p className="hint">
-            Preview and Installed app have separate values. Start the preview
-            from Pockets to use its saved values. Stop and start either
-            environment to apply changes.
+            Preview and Installed app have separate values. Changes take effect
+            on the next start — stop and start the{" "}
+            {environment === "installed" ? "installed app" : "preview"} to apply
+            them (no rebuild needed).
           </p>
           {environment === "preview" && (
             <p className="hint">
-              Preview code can read these values during live reload. Use
-              development credentials.
+              Start the preview from Pockets to use these values. Preview code
+              can read them during live reload — use development credentials.
             </p>
           )}
           <div className="runtime-settings-field">
@@ -212,8 +216,12 @@ function Variables({
       if (change.action === "set" || change.name === draftName) {
         startDraft(null);
       }
+      const envLabel =
+        environment === "installed" ? "installed app" : "preview";
       setNotice(
-        change.action === "set" ? "Variable saved." : "Variable removed.",
+        change.action === "set"
+          ? `Variable saved. Stop and start the ${envLabel} to apply changes.`
+          : `Variable removed. Stop and start the ${envLabel} to apply changes.`,
       );
     } catch (failure) {
       setError(String(failure));
@@ -277,7 +285,7 @@ function Variables({
         </p>
       )}
       {notice && (
-        <p className="hint" role="status">
+        <p className="runtime-settings-status" role="status">
           {notice}
         </p>
       )}

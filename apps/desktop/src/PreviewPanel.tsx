@@ -306,7 +306,7 @@ export default function PreviewPanel({
         ariaLabel="Preview"
         title={
           <h2 id="preview-heading" className="preview-title">
-            Workspace preview
+            Live Preview Workspace
           </h2>
         }
         trailing={
@@ -482,7 +482,7 @@ export default function PreviewPanel({
             {bound && state === "ready" && readyUrl !== undefined && (
               <iframe
                 src={readyUrl}
-                title="Workspace preview"
+                title="Live Preview Workspace"
                 className="preview-iframe"
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
               />
