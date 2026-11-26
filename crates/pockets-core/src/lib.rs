@@ -41,6 +41,7 @@ pub mod scaffold;
 pub mod source;
 pub mod tailscale;
 pub mod tailscale_portal;
+pub mod uninstall;
 pub mod upstream;
 pub mod versions;
 

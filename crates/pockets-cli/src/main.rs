@@ -3,6 +3,7 @@
 mod rpc;
 mod server;
 mod service;
+mod uninstall;
 
 use std::path::PathBuf;
 
@@ -71,6 +72,7 @@ enum Commands {
     Auth {
         action: AuthAction,
     },
+    Uninstall(uninstall::UninstallFlags),
 }
 
 enum AuthAction {
@@ -114,6 +116,8 @@ Commands:
                                           Install/uninstall/print background service (launchd/systemd)
   url [--rotate] [--origin URL]           Print a one-time sign-in URL (use --rotate to revoke old sessions)
   auth rotate                             Rotate the session key and revoke all existing browser sessions
+  uninstall [--yes] [--remove-data|--keep-data] [--uninstall-podman|--keep-podman]
+                                          Uninstall Pockets (and optionally its data & Podman)
 
 Global options:
   --data-dir <DIR>                        Override Pockets data directory (or POCKETS_DATA_DIR)
@@ -335,6 +339,7 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
             }
             None => return Err("Usage: pockets auth rotate".to_owned()),
         },
+        "uninstall" => Commands::Uninstall(uninstall::parse_uninstall_flags(args)?),
         other => return Err(format!("Unknown command '{other}'. Run `pockets --help`.")),
     };
 
@@ -463,6 +468,7 @@ async fn main() {
         Some(Commands::Tailscale { action, port }) => run_tailscale(ctx, action, port).await,
         Some(Commands::Url { rotate, origin }) => run_url(ctx, rotate, origin).await,
         Some(Commands::Auth { action }) => run_auth(ctx, action).await,
+        Some(Commands::Uninstall(flags)) => uninstall::run_uninstall(ctx, flags).await,
     };
 
     if let Err(err) = result {
@@ -1232,6 +1238,35 @@ mod tests {
         assert!(parse_cli(&["auth".to_owned()]).is_err());
         assert!(parse_cli(&["auth".to_owned(), "unknown".to_owned()]).is_err());
         assert!(parse_cli(&["url".to_owned(), "--unknown".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn parses_uninstall_command() {
+        let plain = parse_cli(&["uninstall".to_owned()]).unwrap();
+        assert!(matches!(
+            plain.command,
+            Some(Commands::Uninstall(uninstall::UninstallFlags {
+                yes: false,
+                remove_data: None,
+                uninstall_podman: None,
+            }))
+        ));
+
+        let with_flags = parse_cli(&[
+            "uninstall".to_owned(),
+            "-y".to_owned(),
+            "--remove-data".to_owned(),
+            "--uninstall-podman".to_owned(),
+        ])
+        .unwrap();
+        assert!(matches!(
+            with_flags.command,
+            Some(Commands::Uninstall(uninstall::UninstallFlags {
+                yes: true,
+                remove_data: Some(true),
+                uninstall_podman: Some(true),
+            }))
+        ));
     }
 
     #[test]

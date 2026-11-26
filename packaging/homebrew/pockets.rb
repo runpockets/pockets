@@ -51,6 +51,9 @@ class Pockets < Formula
 
       After opening once in your browser, bookmark http://pockets.localhost:18786/
       (or use Safari "Add to Dock" / Chrome "Install App").
+
+      To uninstall Pockets later (and optionally remove its data and Podman):
+        pockets uninstall
     EOS
   end
 

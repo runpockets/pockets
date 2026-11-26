@@ -81,7 +81,16 @@ pockets stop <id>           # Stop a running Pocket (preserves data)
 pockets service install     # Install & enable launchd (macOS) or systemd --user (Linux)
 pockets service uninstall   # Stop & remove the background service
 pockets tailscale on|off    # Enable/disable private Tailscale HTTPS access for the dashboard
+pockets uninstall           # Uninstall Pockets (and optionally its data & Podman)
 ```
+
+### Uninstall
+
+```sh
+pockets uninstall
+```
+
+Stops the background service, cleans up any Pockets Tailscale Serve routes, uninstalls Pockets, and prompts before removing Pockets containers/volumes/data or uninstalling Podman (checking first for non-Pockets containers or volumes). Your Pocket source code folders are never touched.
 
 ---
 

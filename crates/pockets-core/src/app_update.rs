@@ -34,7 +34,7 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_RELEASE_NOTES: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum InstallMethod {
+pub enum InstallMethod {
     Homebrew {
         prefix: PathBuf,
         has_brew_podman: bool,
@@ -46,7 +46,7 @@ enum InstallMethod {
 }
 
 impl InstallMethod {
-    fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Self::Homebrew { .. } => "homebrew",
             Self::Binary { .. } => "binary",
@@ -160,7 +160,7 @@ pub fn subscribe_restart() -> tokio::sync::watch::Receiver<Option<PathBuf>> {
     restart_signal().subscribe()
 }
 
-fn current_install_method() -> InstallMethod {
+pub fn current_install_method() -> InstallMethod {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|path| std::fs::canonicalize(&path).ok().or(Some(path)));
@@ -170,7 +170,7 @@ fn current_install_method() -> InstallMethod {
     }
 }
 
-fn detect_install_method(exe: &Path) -> InstallMethod {
+pub fn detect_install_method(exe: &Path) -> InstallMethod {
     let normalized = exe.to_string_lossy().replace('\\', "/");
 
     if let Some(idx) = normalized.find("/Cellar/pockets/") {
@@ -421,7 +421,7 @@ pub(crate) fn extract_release_notes(body: &str) -> Vec<String> {
     notes
 }
 
-fn find_brew(prefix: &Path) -> Option<PathBuf> {
+pub fn find_brew(prefix: &Path) -> Option<PathBuf> {
     let candidates = [
         prefix.join("bin").join("brew"),
         PathBuf::from("/opt/homebrew/bin/brew"),

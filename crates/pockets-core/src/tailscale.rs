@@ -956,6 +956,70 @@ pub async fn active_port_serve_url(port: u16) -> Option<String> {
     }
 }
 
+/// Removes all Tailscale Serve routes owned by Pockets: the dashboard daemon
+/// port(s), the port 443 shortcut portal, and every per-Pocket share recorded
+/// in `tailscale-shares.json`. Never touches foreign or unrelated routes.
+/// Returns the number of owned routes removed.
+pub async fn disable_all_pockets_routes(
+    store: &Store,
+    daemon_ports: &[u16],
+) -> Result<usize, String> {
+    let Some(bin) = find_tailscale() else {
+        return Ok(0);
+    };
+    disable_all_pockets_routes_with_bin(&bin, store, daemon_ports).await
+}
+
+async fn disable_all_pockets_routes_with_bin(
+    bin: &Path,
+    store: &Store,
+    daemon_ports: &[u16],
+) -> Result<usize, String> {
+    let report = detect_with_bin(bin).await;
+    if report.state != TailscaleState::Ready {
+        return Ok(0);
+    }
+    let Some(dns_name) = report.dns_name.as_deref() else {
+        return Ok(0);
+    };
+    let serve = inspect_serve_with_bin(bin).await?;
+
+    let mut targets: Vec<(u16, u16)> = Vec::new();
+    for &port in daemon_ports {
+        if !targets.contains(&(port, port)) {
+            targets.push((port, port));
+        }
+    }
+    if !targets.contains(&(PORTAL_HTTPS_PORT, PORTAL_LOCAL_PORT)) {
+        targets.push((PORTAL_HTTPS_PORT, PORTAL_LOCAL_PORT));
+    }
+    if let Ok(shares) = load_all_shares(store) {
+        for record in shares.values() {
+            if let Some(port) = record.port {
+                if !targets.contains(&(port, port)) {
+                    targets.push((port, port));
+                }
+            }
+        }
+    }
+
+    let mut removed = 0usize;
+    let mut errors = Vec::new();
+    for (external_port, target_port) in targets {
+        if route_ownership(&serve, dns_name, external_port, target_port) == RouteOwnership::Owned {
+            let https_flag = format!("--https={external_port}");
+            match runtime::run(bin, &["serve", &https_flag, "off"]).await {
+                Ok(_) => removed += 1,
+                Err(err) => errors.push(format_serve_error(err)),
+            }
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+    Ok(removed)
+}
+
 /// Appends an actionable Linux operator hint when `tailscale serve` fails due
 /// to non-root permissions on `tailscaled`.
 fn format_serve_error(err: String) -> String {
@@ -1822,5 +1886,70 @@ exit 1
             .iter()
             .any(|c| c == "serve --bg --yes --https=18786 http://127.0.0.1:18786"));
         assert!(log.iter().any(|c| c == "serve --https=18786 off"));
+    }
+
+    #[tokio::test]
+    async fn disable_all_pockets_routes_removes_only_owned_routes() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().join("projects"));
+        let project_id = "e".repeat(32);
+        save_share(
+            &store,
+            &project_id,
+            Some(ShareRecord {
+                enabled: true,
+                port: Some(18788),
+            }),
+        )
+        .unwrap();
+        let foreign_id = "f".repeat(32);
+        save_share(
+            &store,
+            &foreign_id,
+            Some(ShareRecord {
+                enabled: true,
+                port: Some(18789),
+            }),
+        )
+        .unwrap();
+
+        let status_body = String::from_utf8(status_json(
+            "Running",
+            Some("macbook.tail00000.ts.net."),
+            Some(vec!["macbook.tail00000.ts.net"]),
+            vec!["https"],
+        ))
+        .unwrap();
+        // Port 18786 (daemon), 443 (portal -> 18787), and 18788 (pocket) are owned.
+        // Port 18789 proxies to a foreign backend (http://127.0.0.1:9999) so must NOT be removed.
+        let serve_body = r#"{"TCP":{"443":{"HTTPS":true},"18786":{"HTTPS":true},"18788":{"HTTPS":true},"18789":{"HTTPS":true}},"Web":{"macbook.tail00000.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18787"}}},"macbook.tail00000.ts.net:18786":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18786"}}},"macbook.tail00000.ts.net:18788":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18788"}}},"macbook.tail00000.ts.net:18789":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:9999"}}}}}"#;
+        let script = format!(
+            r#"
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+    printf '%s' '{status_body}'
+    exit 0
+fi
+if [ "$1" = "serve" ] && [ "$2" = "status" ] && [ "$3" = "--json" ]; then
+    printf '%s' '{serve_body}'
+    exit 0
+fi
+if [ "$1" = "serve" ] && [ "$3" = "off" ]; then
+    exit 0
+fi
+echo "unexpected args: $@" >&2
+exit 1
+"#
+        );
+        let (bin, calls) = fake_tailscale(temp.path(), &script);
+
+        let removed = disable_all_pockets_routes_with_bin(&bin, &store, &[18786])
+            .await
+            .unwrap();
+        assert_eq!(removed, 3);
+        let log = recorded_calls(&calls);
+        assert!(log.iter().any(|c| c == "serve --https=18786 off"));
+        assert!(log.iter().any(|c| c == "serve --https=443 off"));
+        assert!(log.iter().any(|c| c == "serve --https=18788 off"));
+        assert!(!log.iter().any(|c| c.contains("18789")));
     }
 }
