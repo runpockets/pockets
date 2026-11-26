@@ -632,6 +632,11 @@ export default function PocketSidebar({
             type="button"
             className="pocket-sidebar-version"
             data-update={appUpdate.updateAvailable ? "true" : undefined}
+            data-version-state={
+              !appUpdate.updateAvailable && !appUpdate.error
+                ? "current"
+                : "update"
+            }
             aria-label={
               appUpdate.updateAvailable && appUpdate.latestVersion
                 ? `Pockets v${appUpdate.currentVersion} — update to v${appUpdate.latestVersion} available`

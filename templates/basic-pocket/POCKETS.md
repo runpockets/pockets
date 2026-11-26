@@ -3,9 +3,8 @@
 Use your preferred coding tool to edit this folder. Pockets manages live preview
 and self-hosted installation.
 
-Read `POCKETS_BRIEF.md` for the user's goal. Inspect the source before changing
-it. Work in this folder and keep this project's identity; do not generate a
-separate project or edit Pockets' managed snapshots.
+Inspect the source before changing it. Work in this folder and keep this project's
+identity; do not generate a separate project or edit Pockets' managed snapshots.
 
 ## Current runtime contract
 
@@ -63,7 +62,7 @@ separate project or edit Pockets' managed snapshots.
 
 ## Iterate and verify
 
-1. Review the files and brief, then implement the requested app in this folder.
+1. Review the files, then implement the requested app in this folder.
 2. Run `node --check server.js` and `npm test` when authorized by the user's
    session. The starter tests and server require no dependency installation.
 3. In Pockets, choose **Develop → Start**. Saved edits refresh automatically;

@@ -6,19 +6,104 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { invoke } from "./api";
-import NewProject from "./NewProject";
+import NewProject, {
+  type GitHubPocketPreview,
+  type HubCatalogResponse,
+} from "./NewProject";
 
 vi.mock("./api", () => ({ invoke: vi.fn() }));
 const native = vi.mocked(invoke);
+
 const project = {
   id: "created-project",
   manifest: { metadata: { name: "My portfolio" } },
 };
 
+const hubCatalog: HubCatalogResponse = {
+  source: "remote",
+  hubUrl: "https://raw.githubusercontent.com/runpockets/pockets-hub/main/catalog.json",
+  pockets: [
+    {
+      repo: "runpockets/coinkiwi",
+      repoUrl: "https://github.com/runpockets/coinkiwi",
+      id: "coinkiwi",
+      name: "CoinKiwi",
+      description: "Track crypto portfolios and NZD prices locally.",
+      version: "0.4.0",
+      category: "Finance",
+      verified: true,
+      metadataSource: "repo",
+      hostSupported: true,
+      architectures: ["arm64", "amd64"],
+      previewApis: [
+        {
+          host: "api.coingecko.com",
+          name: "CoinGecko",
+          purpose: "Fetch live market prices",
+        },
+      ],
+      runtimeVariables: [],
+    },
+  ],
+};
+
+const validPreview: GitHubPocketPreview = {
+  owner: "runpockets",
+  repo: "coinkiwi",
+  slug: "runpockets/coinkiwi",
+  repoUrl: "https://github.com/runpockets/coinkiwi",
+  manifest: {
+    metadata: {
+      id: "coinkiwi",
+      name: "CoinKiwi",
+      version: "0.4.0",
+      description: "Track crypto portfolios and NZD prices locally.",
+    },
+    runtime: {
+      image: "localhost/pockets-coinkiwi:0.4.0",
+      architectures: ["arm64", "amd64"],
+    },
+    web: { port: 8080, healthcheck: "/health" },
+    storage: { name: "coinkiwi-data", path: "/data" },
+    previewApis: [
+      {
+        host: "api.coingecko.com",
+        name: "CoinGecko",
+        purpose: "Fetch live market prices",
+      },
+    ],
+    runtimeVariables: [
+      {
+        name: "COINGECKO_API_KEY",
+        kind: "secret",
+        purpose: "Optional API key",
+        required: false,
+      },
+    ],
+  },
+  hostSupported: true,
+};
+
+function stubInvoke(
+  handlers: Record<string, (args?: Record<string, unknown>) => unknown>,
+) {
+  native.mockImplementation(async (command, args) => {
+    if (command in handlers) {
+      return handlers[command](args as Record<string, unknown> | undefined);
+    }
+    if (command === "list_hub_pockets") {
+      return hubCatalog;
+    }
+    return null;
+  });
+}
+
 function renderForm() {
   const onCreated = vi.fn();
+  const onSelectProject = vi.fn();
   const view = render(
     <NewProject
       sidebarCollapsed={false}
@@ -26,30 +111,31 @@ function renderForm() {
       onToggleSidebar={vi.fn()}
       onTogglePreview={vi.fn()}
       onCreated={onCreated}
+      onSelectProject={onSelectProject}
     />,
   );
-  return { ...view, onCreated };
+  return { ...view, onCreated, onSelectProject };
 }
 
 describe("New project", () => {
   beforeEach(() => {
     native.mockReset();
+    stubInvoke({});
   });
   afterEach(cleanup);
 
-  it("creates a linked project with a brief through the native location picker without starting runtime or AI", async () => {
-    native.mockResolvedValue(project);
+  it("creates a linked starter project without a project brief field", async () => {
+    stubInvoke({ create_development_project: () => project });
     const { onCreated } = renderForm();
-    expect(native).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/brief/i)).toBeNull();
+
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "My portfolio" },
     });
     expect(
       (screen.getByLabelText("Folder name") as HTMLInputElement).value,
     ).toBe("my-portfolio");
-    fireEvent.change(screen.getByLabelText("Project brief (optional)"), {
-      target: { value: "Holdings and clearly labeled sample prices" },
-    });
+
     fireEvent.click(
       screen.getByRole("button", { name: "Choose location & create" }),
     );
@@ -59,20 +145,14 @@ describe("New project", () => {
         developmentLinked: true,
       }),
     );
-    expect(native.mock.calls).toEqual([
-      [
-        "create_development_project",
-        {
-          name: "My portfolio",
-          folderName: "my-portfolio",
-          brief: "Holdings and clearly labeled sample prices",
-        },
-      ],
-    ]);
+    expect(native).toHaveBeenCalledWith("create_development_project", {
+      name: "My portfolio",
+      folderName: "my-portfolio",
+    });
   });
 
   it("preserves form input on picker cancellation and respects an edited folder name", async () => {
-    native.mockResolvedValue(null);
+    stubInvoke({ create_development_project: () => null });
     const { onCreated } = renderForm();
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "First name" },
@@ -105,12 +185,12 @@ describe("New project", () => {
 
   it("shows creation errors and prevents duplicate submission while the picker is pending", async () => {
     let reject!: (error: Error) => void;
-    native.mockImplementation(
-      () =>
+    stubInvoke({
+      create_development_project: () =>
         new Promise((_resolve, fail) => {
           reject = fail;
         }),
-    );
+    });
     renderForm();
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "Tracker" },
@@ -118,7 +198,10 @@ describe("New project", () => {
     const form = screen.getByLabelText("Project name").closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
-    expect(native).toHaveBeenCalledOnce();
+    const createCalls = native.mock.calls.filter(
+      ([cmd]) => cmd === "create_development_project",
+    );
+    expect(createCalls).toHaveLength(1);
     await act(async () =>
       reject(new Error("That folder already exists. Use Link project.")),
     );
@@ -132,12 +215,12 @@ describe("New project", () => {
 
   it("links existing source without requiring creation fields, and reports registration after unmount", async () => {
     let resolve!: (value: unknown) => void;
-    native.mockImplementation(
-      () =>
+    stubInvoke({
+      link_development_folder: () =>
         new Promise((done) => {
           resolve = done;
         }),
-    );
+    });
     const { onCreated, unmount } = renderForm();
     fireEvent.click(
       screen.getByRole("button", { name: "Link existing project" }),
@@ -169,21 +252,119 @@ describe("New project", () => {
     ).toBe(true);
   });
 
-  it("adds a Pocket from a GitHub repository", async () => {
-    native.mockResolvedValueOnce(project);
+  it("lists CoinKiwi from Pockets Hub with its repo description and pulls it on click", async () => {
+    const coinKiwiProject = {
+      id: "coinkiwi-id",
+      manifest: { metadata: { name: "CoinKiwi" } },
+    };
+    stubInvoke({ add_github_pocket: () => coinKiwiProject });
     const { onCreated } = renderForm();
-    fireEvent.change(screen.getByLabelText("GitHub repository"), {
-      target: { value: "runpockets/crypto-tracker" },
-    });
+
+    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
+    expect(await within(hubSection).findByText("CoinKiwi")).toBeTruthy();
+    expect(
+      within(hubSection).getByText(
+        "Track crypto portfolios and NZD prices locally.",
+      ),
+    ).toBeTruthy();
+    expect(within(hubSection).getByText("runpockets/coinkiwi")).toBeTruthy();
+
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Add from GitHub" }));
+      fireEvent.click(
+        within(hubSection).getByRole("button", { name: "Pull Pocket" }),
+      );
     });
     expect(native).toHaveBeenCalledWith("add_github_pocket", {
-      source: "runpockets/crypto-tracker",
+      source: "runpockets/coinkiwi",
+    });
+    expect(onCreated).toHaveBeenCalledWith({
+      ...coinKiwiProject,
+      developmentLinked: true,
+    });
+  });
+
+  it("offers Open Pocket when a Hub Pocket is already added", async () => {
+    stubInvoke({
+      list_hub_pockets: () => ({
+        ...hubCatalog,
+        pockets: [
+          { ...hubCatalog.pockets[0], existingProjectId: "existing-coinkiwi" },
+        ],
+      }),
+    });
+    const { onSelectProject } = renderForm();
+
+    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
+    const openBtn = await within(hubSection).findByRole("button", {
+      name: "Open Pocket",
+    });
+    fireEvent.click(openBtn);
+    expect(onSelectProject).toHaveBeenCalledWith("existing-coinkiwi");
+  });
+
+  it("validates a GitHub repository before pulling and shows its manifest preview", async () => {
+    stubInvoke({
+      inspect_github_pocket: () => validPreview,
+      add_github_pocket: () => project,
+    });
+    const { onCreated } = renderForm();
+
+    fireEvent.change(screen.getByLabelText("GitHub repository"), {
+      target: { value: "https://github.com/runpockets/coinkiwi" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check repo" }));
+    });
+    expect(native).toHaveBeenCalledWith("inspect_github_pocket", {
+      source: "https://github.com/runpockets/coinkiwi",
+    });
+
+    const preview = await screen.findByRole("region", {
+      name: "Validated repository preview",
+    });
+    expect(within(preview).getByText("Valid Pocket repository")).toBeTruthy();
+    expect(within(preview).getByText("CoinKiwi")).toBeTruthy();
+    expect(
+      within(preview).getByText(
+        "Track crypto portfolios and NZD prices locally.",
+      ),
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(
+        within(preview).getByRole("button", { name: "Pull Pocket" }),
+      );
+    });
+    expect(native).toHaveBeenCalledWith("add_github_pocket", {
+      source: "runpockets/coinkiwi",
     });
     expect(onCreated).toHaveBeenCalledWith({
       ...project,
       developmentLinked: true,
     });
+  });
+
+  it("shows a validation error for an invalid GitHub repo and clears it on edit", async () => {
+    stubInvoke({
+      inspect_github_pocket: () =>
+        Promise.reject(
+          new Error(
+            "octocat/hello-world is not a valid Pocket repository: missing pocket.yaml at the repository root.",
+          ),
+        ),
+    });
+    renderForm();
+
+    const input = screen.getByLabelText("GitHub repository");
+    fireEvent.change(input, { target: { value: "octocat/hello-world" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check repo" }));
+    });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "missing pocket.yaml",
+    );
+
+    fireEvent.change(input, { target: { value: "runpockets/coinkiwi" } });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

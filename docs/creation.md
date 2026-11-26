@@ -6,15 +6,15 @@ installation and updates without needing a model connection for this workflow.
 
 ## Normal user workflow
 
-1. Choose **New pocket**, enter a name and optional project brief, then choose
-   **Choose location & create**. The native picker selects a parent directory;
-   Pockets creates a new subfolder and registers a linked draft. It never
-   overwrites existing folders or executes code during creation.
+1. Choose **New pocket**, enter a project name (and optional custom folder slug),
+   then choose **Choose location & create**. The native picker selects a parent
+   directory; Pockets creates a new subfolder and registers a linked draft. It
+   never overwrites existing folders or executes code during creation.
 2. For existing source, choose **Link existing project** or **Link project**.
    Linking the same folder returns its existing Pocket identity.
 3. Use **Open folder** or **Copy folder path** beside the linked path. Open the
    folder as your coding tool’s workspace. The starter’s `AGENTS.md` points to
-   the runtime requirements in `POCKETS.md` and the app brief in `POCKETS_BRIEF.md`.
+   the runtime requirements in `POCKETS.md`.
 4. Choose **Start** in the preview pane. Saved source edits refresh automatically
    while you iterate in your coding tool. Preview data is separate and
    disposable; preview Stop discards it and keeps the preview stopped.
@@ -73,8 +73,8 @@ npm run pocket -- validate ./my-pocket/pocket.yaml
 
 Pockets bundles the same `templates/basic-pocket` text starter used by this
 CLI. It includes a manifest, container definition, health endpoint, persistent
-visit-count demonstration, tests, formatter scripts, coding-tool instructions
-and a brief. The CLI destination must be new; its final directory name becomes
+visit-count demonstration, tests, formatter scripts, and coding-tool instructions.
+The CLI destination must be new; its final directory name becomes
 the Pocket manifest ID and its title-cased display name. The web UI permits a
 separate display name. Neither path installs dependencies or executes code.
 
@@ -96,7 +96,7 @@ Ask a fresh coding-agent session:
 > Read `agent/skills/create-pocket/SKILL.md` in this repository. Create a Pocket that [describe one small application]. Work in a new directory, keep persistent data under `/data`, and do not build or run containers without approval.
 
 For a project already created in Pockets, open its source folder in the coding
-tool and ask it to work from `AGENTS.md` and the project brief. The repository
+tool and ask it to work from `AGENTS.md` and `POCKETS.md`. The repository
 skill is also available as a portable instruction file.
 
 An execution approval should identify the activity and scope. For example, approve running the generated project's focused tests without also approving a container build or system installation.

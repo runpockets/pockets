@@ -1347,7 +1347,7 @@ mod tests {
         let store = crate::projects::Store::new(temp.path().join("projects"));
         let parent = temp.path().join("work");
         std::fs::create_dir(&parent).unwrap();
-        let project = crate::scaffold::create(&store, &parent, "Demo", "demo-vars", "").unwrap();
+        let project = crate::scaffold::create(&store, &parent, "Demo", "demo-vars").unwrap();
         let folder = crate::development::folder(&store, &project.id).unwrap();
 
         let base_manifest = std::fs::read_to_string(folder.join("pocket.yaml")).unwrap();

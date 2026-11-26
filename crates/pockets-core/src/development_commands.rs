@@ -11,11 +11,10 @@ pub async fn create_development_project(
     parent: PathBuf,
     name: String,
     folder_name: String,
-    brief: String,
 ) -> Result<Project, String> {
-    crate::scaffold::inputs(&name, &folder_name, &brief)?;
+    crate::scaffold::inputs(&name, &folder_name)?;
     mutate(ctx, None, false, move |store| {
-        crate::scaffold::create(&store, &parent, &name, &folder_name, &brief)
+        crate::scaffold::create(&store, &parent, &name, &folder_name)
     })
     .await
 }

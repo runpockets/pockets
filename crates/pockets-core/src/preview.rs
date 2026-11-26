@@ -2041,7 +2041,7 @@ impl Workspace {
         std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
         std::fs::create_dir(&directory).map_err(|e| e.to_string())?;
         let workspace = Self(std::fs::canonicalize(directory).map_err(|e| e.to_string())?);
-        let files = crate::scaffold::render("Preview Fixture", "preview-fixture", "")?;
+        let files = crate::scaffold::render("Preview Fixture", "preview-fixture")?;
         for (name, text) in files {
             workspace.write(&name, &text)?;
         }

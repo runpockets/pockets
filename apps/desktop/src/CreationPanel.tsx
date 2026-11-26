@@ -101,6 +101,57 @@ export interface Project {
   sourceDigest: string;
 }
 
+function pocketLogoInitial(name: string): string {
+  const trimmed = name.trim();
+  const alnum = /[A-Za-z0-9]/.exec(trimmed);
+  if (alnum) return alnum[0].toUpperCase();
+  const first = Array.from(trimmed)[0];
+  return first ? first.toUpperCase() : "P";
+}
+
+function PocketCardLogo({
+  projectId,
+  name,
+  cacheKey,
+}: {
+  projectId: string;
+  name: string;
+  cacheKey: string;
+}) {
+  const [state, setState] = useState<"loading" | "loaded" | "missing">(
+    "loading",
+  );
+  const src = `/api/projects/${encodeURIComponent(projectId)}/favicon?v=${encodeURIComponent(cacheKey)}`;
+
+  useEffect(() => {
+    setState("loading");
+  }, [src]);
+
+  return (
+    <span
+      className="creation-card-logo"
+      data-loaded={state === "loaded" ? "true" : undefined}
+      aria-hidden="true"
+    >
+      {state !== "loaded" && (
+        <span className="creation-card-logo-letter">
+          {pocketLogoInitial(name)}
+        </span>
+      )}
+      {state !== "missing" && (
+        <img
+          className="creation-card-logo-img"
+          src={src}
+          alt=""
+          data-loaded={state === "loaded" ? "true" : undefined}
+          onLoad={() => setState("loaded")}
+          onError={() => setState("missing")}
+        />
+      )}
+    </span>
+  );
+}
+
 /** True when a record has an installed runtime: the new `installed` pin or
  *  the legacy `builtImageId` mirror. Drafts have neither. */
 function isBuilt(project: Project): boolean {
@@ -2320,9 +2371,22 @@ function ProjectCard({
         </figure>
       )}
       <div className="creation-card-top">
-        <h3 id={nameId} className="creation-name">
-          {inWorkspace ? "Installed app" : project.manifest.metadata.name}
-        </h3>
+        {inWorkspace ? (
+          <h3 id={nameId} className="creation-name">
+            Installed app
+          </h3>
+        ) : (
+          <div className="creation-card-title-group">
+            <PocketCardLogo
+              projectId={project.id}
+              name={project.manifest.metadata.name}
+              cacheKey={`${project.sourceDigest.slice(0, 12)}-${running ? "1" : "0"}`}
+            />
+            <h3 id={nameId} className="creation-name">
+              {project.manifest.metadata.name}
+            </h3>
+          </div>
+        )}
         {/* Usage rides on the status instead of its own line: memory in
             grey while things are calm, CPU in amber once it passes
             HIGH_CPU_PERCENT, and both exact figures in a panel on hover or

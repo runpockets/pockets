@@ -50,7 +50,7 @@ Installs Podman (via `apt`, `dnf`, or `pacman` if missing), installs the `pocket
 ## How It Works
 
 ### 1. Create or link a Pocket
-Choose **New pocket** in the dashboard (or run `pockets new "My App"` / `pockets link .` from your terminal). Pockets scaffolds a standalone starter with `pocket.yaml`, `Containerfile`, tests, and `AGENTS.md` pointing your coding agent (Claude Code, Cursor, Codex, etc.) at the Pocket runtime contract in `POCKETS.md` and your app brief in `POCKETS_BRIEF.md`.
+Choose **New pocket** in the dashboard (or run `pockets new "My App"` / `pockets link .` from your terminal). Pockets scaffolds a standalone starter with `pocket.yaml`, `Containerfile`, tests, and `AGENTS.md` pointing your coding agent (Claude Code, Cursor, Codex, etc.) at the Pocket runtime contract in `POCKETS.md`. You can also pull ready-made Pockets directly from the Pockets Hub or any public GitHub Pocket repository.
 
 ### 2. Develop with Live Preview
 Open the Pocket folder in your preferred coding tool and click **Start** in **Workspace preview**.

@@ -10,7 +10,7 @@ Use this workflow to create a small, self-hosted HTTP application. The applicati
 ## Discover the tools
 
 If Pockets already created or linked the project, work in that existing source
-folder. Read `AGENTS.md`, `POCKETS.md` and `POCKETS_BRIEF.md` if present. Preserve
+folder. Read `AGENTS.md` and `POCKETS.md` if present. Preserve
 its manifest `metadata.id` and make edits in place.
 
 If creating from scratch outside Pockets, use the repository tools below.
@@ -28,7 +28,7 @@ If dependencies are not installed, ask before running `npm ci`. The creation too
 ## Build one small application
 
 1. Restate the user's requested behaviour and choose the smallest useful implementation. Ask only about material ambiguity, external services, credentials, or permissions.
-2. Use the existing linked project, or create the starter in a new approved destination. Read its files and brief before editing.
+2. Use the existing linked project, or create the starter in a new approved destination. Read its files before editing.
 3. Replace its hello-world behaviour with the requested application. Preserve the contract:
    - One HTTP container, listening on `0.0.0.0` at the manifest's internal port.
    - `GET /health` returning HTTP 200 when the server is ready.

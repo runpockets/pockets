@@ -13,8 +13,8 @@ choose **Link project** (or run `pockets link .` in this folder). Choose **Devel
 image cached. Saved edits in your coding tool refresh automatically.
 
 Open this folder as your coding tool’s workspace. `AGENTS.md` points to the
-runtime requirements in `POCKETS.md` and the app brief in `POCKETS_BRIEF.md`.
-Edit the brief to describe the app you want, then ask your coding tool to build it.
+runtime requirements in `POCKETS.md`. Ask your coding tool to build the app
+you want right in this folder.
 
 Preview runs dependency-free Node code. Declare HTTPS services in `previewApis`
 in `pocket.yaml` so Pockets can request approval while Preview runs. Configure

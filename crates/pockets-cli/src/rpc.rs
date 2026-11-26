@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use pockets_core::{
-    creation, development_commands, fs_browser, github_install, project_lifecycle, project_preview,
-    resource_monitor, revision_commands, runtime_settings, AppContext,
+    creation, development_commands, fs_browser, github_install, hub, project_lifecycle,
+    project_preview, resource_monitor, revision_commands, runtime_settings, AppContext,
 };
 
 fn parse_args<T: for<'de> Deserialize<'de>>(body: Value) -> Result<T, String> {
@@ -55,7 +55,6 @@ struct CreateDevArgs {
     parent_path: String,
     name: String,
     folder_name: String,
-    brief: String,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +134,29 @@ struct AddGitHubArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct InspectGitHubArgs {
+    source: String,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ListHubArgs {
+    #[serde(default)]
+    force: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckHubSubmissionArgs {
+    id: String,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    verify_remote: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BrowseDirectoryArgs {
     #[serde(default)]
     path: Option<String>,
@@ -202,7 +224,6 @@ pub async fn dispatch(
                     fs_browser::expand_tilde(&args.parent_path),
                     args.name,
                     args.folder_name,
-                    args.brief,
                 )
                 .await?,
             )
@@ -393,6 +414,27 @@ pub async fn dispatch(
         }
 
         "resource_snapshot" => to_json(resource_monitor::resource_snapshot(ctx).await?),
+
+        "list_hub_pockets" => {
+            let args: ListHubArgs = if body.is_null() {
+                ListHubArgs::default()
+            } else {
+                parse_args(body)?
+            };
+            to_json(hub::list_hub_pockets(ctx, args.force).await?)
+        }
+
+        "check_hub_submission" => {
+            let args: CheckHubSubmissionArgs = parse_args(body)?;
+            to_json(
+                hub::check_hub_submission(ctx, &args.id, args.repo, args.verify_remote).await?,
+            )
+        }
+
+        "inspect_github_pocket" => {
+            let args: InspectGitHubArgs = parse_args(body)?;
+            to_json(github_install::inspect_github_pocket(ctx, &args.source).await?)
+        }
 
         "add_github_pocket" => {
             let args: AddGitHubArgs = parse_args(body)?;

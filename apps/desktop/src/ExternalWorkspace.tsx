@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "./api";
 import DevelopmentPanel from "./DevelopmentPanel";
+import HubSubmissionPanel from "./HubSubmissionPanel";
 import RuntimeSettings from "./RuntimeSettings";
 import PreviewNetworkSettings from "./PreviewNetworkSettings";
 import type { PreviewApiAccess } from "./useProjectPreview";
@@ -138,6 +139,7 @@ export default function ExternalWorkspace({
             </>
           )}
           <RuntimeSettings projectId={projectId} disabled={building} />
+          <HubSubmissionPanel projectId={projectId} />
         </div>
       </div>
     </div>

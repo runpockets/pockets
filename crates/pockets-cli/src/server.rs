@@ -882,6 +882,37 @@ async fn handle_request(state: Arc<ServerState>, req: Request<Incoming>) -> Resp
             }
         }
 
+        (&Method::GET, p) if p.starts_with("/api/projects/") && p.ends_with("/favicon") => {
+            if !is_authenticated(req.headers(), &state.token) {
+                return json_response(
+                    StatusCode::UNAUTHORIZED,
+                    json!({ "error": "Authentication required." }),
+                );
+            }
+            let id = p
+                .trim_start_matches("/api/projects/")
+                .trim_end_matches("/favicon")
+                .to_owned();
+            match pockets_core::favicon::resolve_project_favicon(&state.ctx, &id).await {
+                Some(asset) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, asset.content_type)
+                    .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+                    .header(
+                        header::CONTENT_SECURITY_POLICY,
+                        "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+                    )
+                    .header(header::CACHE_CONTROL, "private, max-age=300")
+                    .body(Full::new(Bytes::from(asset.bytes)))
+                    .unwrap(),
+                None => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header(header::CACHE_CONTROL, "no-store")
+                    .body(Full::new(Bytes::new()))
+                    .unwrap(),
+            }
+        }
+
         (&Method::GET, p) if p.starts_with("/api/projects/") && p.ends_with("/backup") => {
             if !is_authenticated(req.headers(), &state.token) {
                 return json_response(

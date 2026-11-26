@@ -39,7 +39,6 @@ enum Commands {
         name: String,
         parent: Option<PathBuf>,
         folder: Option<String>,
-        brief: String,
     },
     Link {
         path: PathBuf,
@@ -94,7 +93,7 @@ Commands:
   tailscale [on|off|status] [--port PORT] Manage private Tailscale HTTPS access for the dashboard
   doctor [--bootstrap]                    Check Podman, Tailscale, and local environment health
   list                                    List registered Pockets
-  new <NAME> [--parent DIR] [--folder SLUG] [--brief TEXT]
+  new <NAME> [--parent DIR] [--folder SLUG]
                                           Create a new Pocket starter folder and register it
   link [PATH] [--id ID]                   Link an existing Pocket folder (default: .)
   add <OWNER/REPO | GITHUB_URL>           Clone & register a Pocket from GitHub
@@ -175,7 +174,6 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
             let mut name = None;
             let mut parent = None;
             let mut folder = None;
-            let mut brief = String::new();
             let mut idx = 0;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -191,13 +189,6 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
                                 .ok_or("Missing value for --folder")?
                                 .clone(),
                         );
-                        idx += 2;
-                    }
-                    "--brief" => {
-                        brief = args
-                            .get(idx + 1)
-                            .ok_or("Missing value for --brief")?
-                            .clone();
                         idx += 2;
                     }
                     other if other.starts_with('-') => {
@@ -216,7 +207,6 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
                 name: name.ok_or("Usage: pockets new <NAME> [--parent DIR] [--folder SLUG]")?,
                 parent,
                 folder,
-                brief,
             }
         }
         "link" => {
@@ -409,8 +399,7 @@ async fn main() {
             name,
             parent,
             folder,
-            brief,
-        }) => run_new(ctx, name, parent, folder, brief).await,
+        }) => run_new(ctx, name, parent, folder).await,
         Some(Commands::Link { path, id }) => run_link(ctx, path, id).await,
         Some(Commands::Add { source }) => run_add(ctx, source).await,
         Some(Commands::Start { id }) => run_start(ctx, id).await,
@@ -825,7 +814,6 @@ async fn run_new(
     name: String,
     parent: Option<PathBuf>,
     folder: Option<String>,
-    brief: String,
 ) -> Result<(), String> {
     let parent_dir = match parent {
         Some(p) => p,
@@ -833,9 +821,13 @@ async fn run_new(
             .map_err(|err| format!("Could not read current directory: {err}"))?,
     };
     let folder_slug = folder.unwrap_or_else(|| slugify(&name));
-    let project =
-        development_commands::create_development_project(&ctx, parent_dir.clone(), name, folder_slug.clone(), brief)
-            .await?;
+    let project = development_commands::create_development_project(
+        &ctx,
+        parent_dir.clone(),
+        name,
+        folder_slug.clone(),
+    )
+    .await?;
     println!(
         "Created Pocket '{}' (id: {}) at {}",
         project.manifest.metadata.name,

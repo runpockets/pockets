@@ -72,7 +72,6 @@ describe("api RPC bridge", () => {
     const result = await invoke("create_development_project", {
       name: "Demo",
       folderName: "demo",
-      brief: "",
     });
     expect(result).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();

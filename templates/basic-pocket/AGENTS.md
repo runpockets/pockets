@@ -1,7 +1,6 @@
 # Working on this Pocket
 
 Read `POCKETS.md` for the Pockets runtime requirements and verification steps.
-Read `POCKETS_BRIEF.md` for the app’s goals and use it to guide the requested changes.
 Work in this folder and preserve `metadata.id` in `pocket.yaml`.
 
 When you finish a change, add one line to the end of `POCKETS_CHANGES.md`

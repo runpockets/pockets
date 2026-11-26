@@ -11,7 +11,7 @@ use crate::projects::{Project, Store};
 
 include!(concat!(env!("OUT_DIR"), "/basic_pocket.rs"));
 
-pub(crate) fn inputs(name: &str, slug: &str, brief: &str) -> Result<(), String> {
+pub(crate) fn inputs(name: &str, slug: &str) -> Result<(), String> {
     if name.trim().is_empty()
         || name.chars().count() > 80
         || name
@@ -31,20 +31,11 @@ pub(crate) fn inputs(name: &str, slug: &str, brief: &str) -> Result<(), String> 
     {
         return Err("Folder name must use lowercase letters/numbers separated by single hyphens, at most 63 characters.".into());
     }
-    if brief.len() > 8_000 || brief.contains('\0') {
-        return Err(
-            "Keep the optional brief under 8,000 UTF-8 bytes, without null characters.".into(),
-        );
-    }
     Ok(())
 }
 
-pub(crate) fn render(
-    name: &str,
-    slug: &str,
-    brief: &str,
-) -> Result<BTreeMap<String, String>, String> {
-    inputs(name, slug, brief)?;
+pub(crate) fn render(name: &str, slug: &str) -> Result<BTreeMap<String, String>, String> {
+    inputs(name, slug)?;
     let arch = Architecture::from_host()?;
     let mut files = BTreeMap::new();
     for (path, source) in TEMPLATE_FILES {
@@ -64,12 +55,6 @@ pub(crate) fn render(
         }
         files.insert((*path).to_owned(), text);
     }
-    if !brief.trim().is_empty() {
-        files.insert(
-            "POCKETS_BRIEF.md".into(),
-            format!("# Project brief\n\n{}\n", brief.trim()),
-        );
-    }
     let manifest = manifest::parse_manifest(
         files
             .get("pocket.yaml")
@@ -86,9 +71,8 @@ pub(crate) fn create(
     selected_parent: &Path,
     name: &str,
     slug: &str,
-    brief: &str,
 ) -> Result<Project, String> {
-    let files = render(name, slug, brief)?;
+    let files = render(name, slug)?;
     let destination = write_new_folder(
         store,
         selected_parent,
@@ -155,7 +139,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn creates_a_linked_portable_starter_with_safe_name_and_brief_without_execution() {
+    fn creates_a_linked_portable_starter_with_safe_name_without_execution() {
         let temp = tempfile::tempdir().unwrap();
         let parent = temp.path().join("my projects");
         std::fs::create_dir(&parent).unwrap();
@@ -165,7 +149,6 @@ mod tests {
             &parent,
             "Alex's \"Tracker\": Δ",
             "crypto-tracker",
-            "Track holdings\nUse labeled sample prices for now.",
         )
         .unwrap();
         assert_eq!(project.manifest.metadata.name, "Alex's \"Tracker\": Δ");
@@ -174,12 +157,10 @@ mod tests {
         assert!(project.built_image_id.is_none());
         let folder = crate::development::folder(&store, &project.id).unwrap();
         assert!(folder.ends_with("my projects/crypto-tracker"));
-        assert!(std::fs::read_to_string(folder.join("POCKETS_BRIEF.md"))
-            .unwrap()
-            .contains("Track holdings\n"));
+        assert!(!folder.join("POCKETS_BRIEF.md").exists());
         let agent_instructions = std::fs::read_to_string(folder.join("AGENTS.md")).unwrap();
         assert!(agent_instructions.contains("POCKETS.md"));
-        assert!(agent_instructions.contains("POCKETS_BRIEF.md"));
+        assert!(!agent_instructions.contains("POCKETS_BRIEF.md"));
         assert!(agent_instructions.contains("POCKETS_CHANGES.md"));
         assert!(
             std::fs::read_to_string(folder.join(crate::versions::CHANGES_FILE))
@@ -212,7 +193,7 @@ mod tests {
         let taken = temp.path().join("taken");
         std::fs::create_dir(&taken).unwrap();
         std::fs::write(taken.join("keep"), "original").unwrap();
-        assert!(create(&store, temp.path(), "Taken", "taken", "")
+        assert!(create(&store, temp.path(), "Taken", "taken")
             .unwrap_err()
             .contains("already exists"));
         assert_eq!(
@@ -220,27 +201,19 @@ mod tests {
             "original"
         );
         for slug in ["../escape", "bad/name", "bad--name", "Upper", ".", ""] {
-            assert!(create(&store, temp.path(), "Name", slug, "").is_err());
+            assert!(create(&store, temp.path(), "Name", slug).is_err());
         }
-        assert!(create(&store, temp.path(), "Bad\nName", "bad-name", "").is_err());
-        assert!(create(&store, temp.path(), "Bad\u{2028}Name", "bad-name", "").is_err());
-        assert!(create(
-            &store,
-            temp.path(),
-            "Name",
-            "long-brief",
-            &"x".repeat(8_001)
-        )
-        .is_err());
+        assert!(create(&store, temp.path(), "Bad\nName", "bad-name").is_err());
+        assert!(create(&store, temp.path(), "Bad\u{2028}Name", "bad-name").is_err());
         std::fs::create_dir_all(store.root()).unwrap();
-        assert!(create(&store, store.root(), "Name", "managed", "").is_err());
+        assert!(create(&store, store.root(), "Name", "managed").is_err());
         assert!(!store.root().join("managed").exists());
         assert!(store.list().unwrap().is_empty());
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&taken, temp.path().join("linked")).unwrap();
-            assert!(create(&store, temp.path(), "Name", "linked", "").is_err());
-            assert!(create(&store, &temp.path().join("linked"), "Name", "new", "").is_err());
+            assert!(create(&store, temp.path(), "Name", "linked").is_err());
+            assert!(create(&store, &temp.path().join("linked"), "Name", "new").is_err());
             assert!(!taken.join("new").exists());
         }
     }
@@ -251,12 +224,10 @@ mod tests {
         let invalid_store = temp.path().join("projects-file");
         std::fs::write(&invalid_store, "keep existing file").unwrap();
         let store = Store::new(invalid_store.clone());
-        let error =
-            create(&store, temp.path(), "Recoverable", "recoverable", "My goal").unwrap_err();
+        let error = create(&store, temp.path(), "Recoverable", "recoverable").unwrap_err();
         assert!(error.contains("Source was left at"));
         assert!(error.contains("Link project"));
         assert!(temp.path().join("recoverable/server.js").is_file());
-        assert!(temp.path().join("recoverable/POCKETS_BRIEF.md").is_file());
         assert_eq!(
             std::fs::read_to_string(invalid_store).unwrap(),
             "keep existing file"

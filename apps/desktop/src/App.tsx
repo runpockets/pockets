@@ -986,6 +986,7 @@ export default function App() {
                           onToggleSidebar={toggleSidebar}
                           onTogglePreview={togglePreview}
                           onCreated={handleDevelopmentCreated}
+                          onSelectProject={selectProject}
                         />
                       ) : inTauri && selectedProject !== null ? (
                         <ExternalWorkspace

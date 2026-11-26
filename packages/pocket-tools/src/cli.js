@@ -37,7 +37,7 @@ if (command === "create") {
     // so never print an interpolated `cd` command.
     console.log("next steps:");
     console.log(
-      "  1. Open the new folder in your coding tool. AGENTS.md points to the runtime requirements and project brief.",
+      "  1. Open the new folder in your coding tool. AGENTS.md points to the runtime requirements in POCKETS.md.",
     );
     console.log(
       "  2. Inside the new folder, run npm test after reviewing the code; no install is needed for the starter.",

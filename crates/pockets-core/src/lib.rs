@@ -12,10 +12,12 @@ pub mod builder;
 pub mod creation;
 pub mod development;
 pub mod development_commands;
+pub mod favicon;
 pub mod fs_browser;
 pub mod git;
 pub mod github_install;
 pub mod health;
+pub mod hub;
 pub mod local_sites;
 #[cfg(test)]
 mod managed_live;

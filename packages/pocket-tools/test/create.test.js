@@ -96,7 +96,7 @@ test("create renders a valid project into a parent directory whose name contains
     "utf8",
   );
   assert.match(agentInstructions, /POCKETS\.md/);
-  assert.match(agentInstructions, /POCKETS_BRIEF\.md/);
+  assert.doesNotMatch(agentInstructions, /POCKETS_BRIEF\.md/);
 
   const runtimeInstructions = await readFile(
     path.join(dest, "POCKETS.md"),

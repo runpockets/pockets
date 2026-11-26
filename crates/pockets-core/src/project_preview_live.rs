@@ -395,13 +395,7 @@ async fn desktop_created_starter_runs_and_refreshes_without_waiting_for_api_appr
         .tempdir_in("/private/tmp")
         .unwrap();
     let store = Store::new(temp.path().join("app-data/projects"));
-    let project = crate::scaffold::create(
-        &store,
-        temp.path(),
-        "New Pocket",
-        "new-pocket",
-        "Build a small app",
-    )
+    let project = crate::scaffold::create(&store, temp.path(), "New Pocket", "new-pocket")
     .unwrap();
     let source = crate::development::folder(&store, &project.id).unwrap();
     let manifest = std::fs::read_to_string(source.join("pocket.yaml")).unwrap();

@@ -73,6 +73,18 @@ pub(crate) fn slug_for_project(store: &Store, project: &Project) -> String {
     project.installed_manifest().metadata.id.clone()
 }
 
+/// Looks up the pinned host loopback port for a managed project from
+/// `local-sites.json`, if it has been assigned one.
+pub(crate) fn pinned_port_for_project(store: &Store, project_id: &str) -> Option<u16> {
+    let path = store.root().with_file_name("local-sites.json");
+    let bytes = fs::read(&path).ok()?;
+    let sites = serde_json::from_slice::<BTreeMap<String, Assignment>>(&bytes).ok()?;
+    sites.values().find_map(|row| match row {
+        Assignment::Pinned { id, port } if id == project_id => Some(port.get()),
+        _ => None,
+    })
+}
+
 impl Site<'_> {
     pub fn running_address(self, store: &Store, mapping: Option<&str>) -> Result<Address, String> {
         let port = mapping
