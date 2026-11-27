@@ -12,7 +12,7 @@
 
 .folder-picker-dialog {
   width: min(560px, 100%);
-  max-height: min(620px, 90vh);
+  height: min(620px, 90vh);
   display: flex;
   flex-direction: column;
   gap: var(--space-14);
@@ -109,8 +109,7 @@ button.folder-picker-close:hover:not(:disabled) {
 
 .folder-picker-list {
   flex: 1;
-  min-height: 220px;
-  max-height: 320px;
+  min-height: 0;
   overflow-y: auto;
   background: var(--chrome);
   border: 1px solid var(--border);
@@ -123,6 +122,7 @@ button.folder-picker-close:hover:not(:disabled) {
 
 button.folder-picker-row {
   width: 100%;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -185,6 +185,56 @@ button.folder-picker-row:hover:not(:disabled) .folder-picker-icon-pocket {
 .folder-picker-empty,
 .folder-picker-error {
   margin: var(--space-8) var(--space-10);
+}
+
+.folder-picker-destination {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-10);
+  background: var(--chrome);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.folder-picker-destination-conflict {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+
+.folder-picker-destination-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.folder-picker-destination-label {
+  flex: none;
+  font-family: var(--font-sans);
+  color: var(--text-dim);
+}
+
+.folder-picker-destination-path {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.folder-picker-destination-parent {
+  color: var(--text-dim);
+}
+
+.folder-picker-destination-child {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.folder-picker-destination-warning {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--danger);
 }
 
 .folder-picker-footer {

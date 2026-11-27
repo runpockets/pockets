@@ -13,6 +13,12 @@ interface ActivePick {
   resolve: (path: string | null) => void;
 }
 
+function splitDestinationPath(parent: string, child: string) {
+  const separator = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
+  const prefix = parent.endsWith(separator) ? parent.slice(0, -1) : parent;
+  return { prefix, separator, child };
+}
+
 export default function FolderPickerModal() {
   const [active, setActive] = useState<ActivePick | null>(null);
   const [listing, setListing] = useState<DirectoryListing | null>(null);
@@ -50,6 +56,8 @@ export default function FolderPickerModal() {
   useEffect(() => {
     if (active !== null) {
       setShowHidden(false);
+      setListing(null);
+      setPathInput("");
       void loadPath(undefined, false);
     }
   }, [active, loadPath]);
@@ -74,6 +82,19 @@ export default function FolderPickerModal() {
     setActive(null);
     resolver(result);
   };
+
+  const selectedParent = listing?.currentPath ?? pathInput.trim();
+  const createSubfolder = active.request.createSubfolder?.trim() || undefined;
+  const destination =
+    createSubfolder && selectedParent !== ""
+      ? splitDestinationPath(selectedParent, createSubfolder)
+      : null;
+  const conflictingEntry =
+    createSubfolder && listing !== null
+      ? listing.entries.find(
+          (entry) => entry.name.toLowerCase() === createSubfolder.toLowerCase(),
+        )
+      : undefined;
 
   return (
     <div
@@ -101,7 +122,9 @@ export default function FolderPickerModal() {
               <IconClose size={14} />
             </button>
           </div>
-          <p className="hint">{active.request.description}</p>
+          {active.request.description && (
+            <p className="hint">{active.request.description}</p>
+          )}
         </div>
 
         <form
@@ -125,7 +148,9 @@ export default function FolderPickerModal() {
             <button
               type="button"
               disabled={loading}
-              onClick={() => void loadPath(listing.parentPath ?? undefined, showHidden)}
+              onClick={() =>
+                void loadPath(listing.parentPath ?? undefined, showHidden)
+              }
             >
               Up
             </button>
@@ -191,6 +216,37 @@ export default function FolderPickerModal() {
           ))}
         </div>
 
+        {destination && (
+          <div
+            className={
+              conflictingEntry
+                ? "folder-picker-destination folder-picker-destination-conflict"
+                : "folder-picker-destination"
+            }
+          >
+            <div className="folder-picker-destination-row">
+              <span className="folder-picker-destination-label">
+                Will create
+              </span>
+              <code className="folder-picker-destination-path">
+                <span className="folder-picker-destination-parent">
+                  {destination.prefix}
+                  {destination.separator}
+                </span>
+                <span className="folder-picker-destination-child">
+                  {destination.child}
+                </span>
+              </code>
+            </div>
+            {conflictingEntry && (
+              <p role="alert" className="folder-picker-destination-warning">
+                A folder named “{conflictingEntry.name}” already exists here.
+                Choose another parent folder.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="folder-picker-footer">
           <button type="button" onClick={() => close(null)}>
             Cancel
@@ -198,8 +254,10 @@ export default function FolderPickerModal() {
           <button
             type="button"
             className="button-primary"
-            disabled={loading || pathInput.trim() === ""}
-            onClick={() => close(listing?.currentPath ?? pathInput.trim())}
+            disabled={
+              loading || pathInput.trim() === "" || Boolean(conflictingEntry)
+            }
+            onClick={() => close(selectedParent)}
           >
             {active.request.confirmLabel}
           </button>

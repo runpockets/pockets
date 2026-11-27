@@ -1,9 +1,9 @@
 # `__POCKET_NAME__`
 
 A starter Pocket built from the basic template: a dependency-free Node HTTP
-server with an HTTP health check and a visit count persisted to `/data`, the
-Pocket storage volume. It shows the contract Pockets expects: replace
-`server.js` with your own app and keep the lifecycle bits.
+server with an HTTP health check and `/data` wired as the Pocket storage
+volume. It shows the contract Pockets expects: replace `server.js` with your
+own app and keep the lifecycle bits.
 
 ## Run in Pockets
 
@@ -28,11 +28,11 @@ copied or changed, and external source edits never deploy an update by themselve
 
 ## Endpoints
 
-- `GET /`: hello page with a persistent visit count.
+- `GET /`: starter hello page.
 - `GET /health`: `200` with `{"status":"ok"}` for readiness checks.
 
-The server binds `0.0.0.0:8080` (override with `HOST`/`PORT`) and stores
-`visits.json` in `/data` (override with `DATA_DIR`). In the container it runs
+The server binds `0.0.0.0:8080` (override with `HOST`/`PORT`) and uses `/data`
+(override with `DATA_DIR`) for persistent storage. In the container it runs
 as the non-root `node` user; `/data` is prepared in the image so a fresh named
 volume is writable. For API-backed apps, `lib/cache.js` provides an optional
 dependency-free memory + disk JSON cache under `DATA_DIR/cache` (see
@@ -63,7 +63,6 @@ podman run -d --name pockets-__POCKET_ID__ \
   localhost/pockets-__POCKET_ID__:local
 ```
 
-Open <http://127.0.0.1:8080>, stop the container, start it again with the same
-volume, and the visit count persists. `pocket.yaml` describes this Pocket for
-the Pockets runtime; `runtime.architectures` lists the architecture this image
-was built for.
+Open <http://127.0.0.1:8080> to view the running Pocket. `pocket.yaml`
+describes this Pocket for the Pockets runtime; `runtime.architectures` lists
+the architecture this image was built for.

@@ -1244,9 +1244,7 @@ describe("App shell in the native workspace", () => {
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "Recipe Box" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Choose location & create" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Create project…" }));
     await screen.findByText("Develop in your coding tool");
 
     // The catalog refetches in place (refreshKey bumped, no remount), and
@@ -1314,9 +1312,7 @@ describe("App shell in the native workspace", () => {
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "Tracker" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Choose location & create" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Create project…" }));
     fireEvent.click(
       within(screen.getByTestId("pocket-sidebar")).getByRole("button", {
         name: "Live pockets",

@@ -1,15 +1,10 @@
-// __POCKET_NAME__ starter: dependency-free Node HTTP server with a visit
-// count persisted to DATA_DIR. Replace this file with your own app code and
-// keep GET /health returning 200 for readiness.
+// __POCKET_NAME__ starter: dependency-free Node HTTP server. Replace this
+// file with your own app code and keep GET /health returning 200 for readiness.
 
 import { createServer } from "node:http";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const COUNT_FILE = "visits.json";
-
-function homePage(visits) {
+function homePage() {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -30,46 +25,16 @@ function homePage(visits) {
         text-align: center;
         padding: 2rem;
       }
-      .count {
-        color: #7dd3fc;
-        font-size: 1.2rem;
-      }
     </style>
   </head>
   <body>
     <main>
       <h1>Hello from your Pocket 👋</h1>
-      <p>Replace <code>server.js</code> to build your own app.</p>
-      <p class="count" data-visits="${visits}">Visited ${visits} time${
-        visits === 1 ? "" : "s"
-      } — data in /data survives restarts.</p>
+      <p>Get creating..</p>
     </main>
   </body>
 </html>
 `;
-}
-
-async function readCount(file) {
-  let raw;
-  try {
-    raw = await readFile(file, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return 0;
-    throw err;
-  }
-  try {
-    const visits = JSON.parse(raw)?.visits;
-    return Number.isInteger(visits) && visits >= 0 ? visits : 0;
-  } catch {
-    return 0; // corrupted file (e.g. torn write); start fresh
-  }
-}
-
-async function writeCount(file, visits) {
-  await mkdir(dirname(file), { recursive: true });
-  const tmp = join(dirname(file), `${COUNT_FILE}.${process.pid}.tmp`);
-  await writeFile(tmp, `${JSON.stringify({ visits })}\n`, "utf8");
-  await rename(tmp, file); // atomic replace: readers never see a partial file
 }
 
 // Exported factory so tests can start the server on an ephemeral port with a
@@ -78,27 +43,13 @@ export function createPocket(options = {}) {
   const dataDir = options.dataDir ?? process.env.DATA_DIR ?? "/data";
   const host = options.host ?? process.env.HOST ?? "0.0.0.0";
   const port = options.port ?? (Number(process.env.PORT) || 8080);
-  const file = join(dataDir, COUNT_FILE);
 
-  // Serialize read-modify-write of the count so concurrent requests cannot
-  // lose updates. A failed task surfaces to its own caller but does not
-  // poison the queue for later requests.
-  let queued = Promise.resolve();
-  function enqueue(task) {
-    const result = queued.then(task, task);
-    queued = result.then(
-      () => {},
-      () => {},
-    );
-    return result;
-  }
-
-  const server = createServer(async (req, res) => {
+  const server = createServer((req, res) => {
     let pathname;
     try {
       // Route on req.url only, against a fixed base: the Host header is
       // untrusted, must never affect routing, and a malformed one must not
-      // throw inside this async handler.
+      // throw inside this request handler.
       pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     } catch {
       res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
@@ -119,21 +70,8 @@ export function createPocket(options = {}) {
     }
 
     if (pathname === "/") {
-      let visits;
-      try {
-        visits = await enqueue(async () => {
-          const next = (await readCount(file)) + 1;
-          await writeCount(file, next);
-          return next;
-        });
-      } catch (err) {
-        console.error("pocket: failed to record visit", err);
-        res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-        res.end("Unable to record visit\n");
-        return;
-      }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(homePage(visits));
+      res.end(homePage());
       return;
     }
 

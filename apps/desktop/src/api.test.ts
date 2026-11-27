@@ -31,12 +31,14 @@ describe("api RPC bridge", () => {
   it("throws the daemon error message on non-ok RPC responses", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({ ok: false, error: "Podman is not running." }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ ok: false, error: "Podman is not running." }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          ),
         ),
-      ),
     );
 
     await expect(invoke("start_project", { id: "abc" })).rejects.toThrow(
@@ -60,6 +62,40 @@ describe("api RPC bridge", () => {
       "/api/rpc/link_development_folder",
       expect.objectContaining({
         body: JSON.stringify({ folderPath: "/tmp/my-pocket" }),
+      }),
+    );
+  });
+
+  it("passes folderName as createSubfolder to the folder picker when creating a project", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, result: { id: "p1" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = vi.fn().mockResolvedValue("~/Code");
+    registerFolderPicker(picker);
+
+    const project = await invoke<{ id: string }>("create_development_project", {
+      name: "Recipe Box",
+      folderName: "recipe-box",
+    });
+
+    expect(project).toEqual({ id: "p1" });
+    expect(picker).toHaveBeenCalledWith({
+      title: "Choose parent folder",
+      confirmLabel: "Create here",
+      createSubfolder: "recipe-box",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/rpc/create_development_project",
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: "Recipe Box",
+          folderName: "recipe-box",
+          parentPath: "~/Code",
+        }),
       }),
     );
   });

@@ -152,9 +152,7 @@ function usableValue(value: number | null | undefined): number | null {
 
 /** Positive integer core count, or `null` when unknown/unusable. */
 function usableCoreCount(value: number | null | undefined): number | null {
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 1
+  return typeof value === "number" && Number.isInteger(value) && value >= 1
     ? value
     : null;
 }
@@ -388,13 +386,13 @@ export default function PocketSidebar({
     );
   };
 
-  // One management page row (v3 §3.1): icon, label and count on a single
-  // line, styled exactly like a pocket row so page rows and pocket rows read
-  // as the same row type. `aria-current="page"` marks the open page.
+  // One top-level section row: icon, label and optional count on a single
+  // line, styled like a pocket row so section rows and pocket rows read as
+  // the same row type. `aria-current="page"` marks the open page.
   const sectionRow = (
     label: string,
     icon: ReactNode,
-    count: number,
+    count: number | null,
     current: boolean,
     onClick: () => void,
     shortcutTitle?: string,
@@ -408,7 +406,9 @@ export default function PocketSidebar({
     >
       {icon}
       <span className="pocket-sidebar-section-label">{label}</span>
-      <span className="pocket-sidebar-section-count">{count}</span>
+      {count !== null && (
+        <span className="pocket-sidebar-section-count">{count}</span>
+      )}
     </button>
   );
 
@@ -435,23 +435,14 @@ export default function PocketSidebar({
           </span>
         }
         trailing={
-          <>
-            <IconButton
-              label="New pocket"
-              title="New pocket ⌘N"
-              onClick={onNewPocket}
-            >
-              <IconPlus />
-            </IconButton>
-            <IconButton
-              label="Toggle sidebar"
-              title="Toggle sidebar ⌘B"
-              pressed
-              onClick={onToggleCollapsed}
-            >
-              <IconPanelLeft />
-            </IconButton>
-          </>
+          <IconButton
+            label="Toggle sidebar"
+            title="Toggle sidebar ⌘B"
+            pressed
+            onClick={onToggleCollapsed}
+          >
+            <IconPanelLeft />
+          </IconButton>
         }
       />
 
@@ -471,6 +462,14 @@ export default function PocketSidebar({
           page === "drafts",
           onShowDrafts,
           "Drafts ⌘3",
+        )}
+        {sectionRow(
+          "New pocket",
+          <IconPlus />,
+          null,
+          page === "workspace" && selectedProjectId === null,
+          onNewPocket,
+          "New pocket ⌘N",
         )}
 
         <div className="pocket-sidebar-divider" aria-hidden="true" />

@@ -24,7 +24,8 @@ const project = {
 
 const hubCatalog: HubCatalogResponse = {
   source: "remote",
-  hubUrl: "https://raw.githubusercontent.com/runpockets/pockets-hub/main/catalog.json",
+  hubUrl:
+    "https://raw.githubusercontent.com/runpockets/pockets-hub/main/catalog.json",
   pockets: [
     {
       repo: "runpockets/coinkiwi",
@@ -124,21 +125,19 @@ describe("New project", () => {
   });
   afterEach(cleanup);
 
-  it("creates a linked starter project without a project brief field", async () => {
+  it("creates a linked starter project without a project brief field and auto-derives the folder slug", async () => {
     stubInvoke({ create_development_project: () => project });
     const { onCreated } = renderForm();
-    expect(screen.queryByLabelText(/brief/i)).toBeNull();
+    expect(
+      screen.queryByLabelText(/brief|what do you want to build/i),
+    ).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "My portfolio" },
     });
-    expect(
-      (screen.getByLabelText("Folder name") as HTMLInputElement).value,
-    ).toBe("my-portfolio");
+    expect(screen.getByText("my-portfolio")).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Choose location & create" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Create project…" }));
     await waitFor(() =>
       expect(onCreated).toHaveBeenCalledWith({
         ...project,
@@ -157,19 +156,18 @@ describe("New project", () => {
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "First name" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     fireEvent.change(screen.getByLabelText("Folder name"), {
       target: { value: "custom-folder" },
     });
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "Second name" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Choose location & create" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Create project…" }));
     await waitFor(() =>
       expect(
         screen
-          .getByRole("button", { name: "Choose location & create" })
+          .getByRole("button", { name: "Create project…" })
           .hasAttribute("disabled"),
       ).toBe(false),
     );
@@ -213,7 +211,7 @@ describe("New project", () => {
     ).toBe("Tracker");
   });
 
-  it("links existing source without requiring creation fields, and reports registration after unmount", async () => {
+  it("links existing source from the Folder tab without requiring creation fields, and reports registration after unmount", async () => {
     let resolve!: (value: unknown) => void;
     stubInvoke({
       link_development_folder: () =>
@@ -222,6 +220,7 @@ describe("New project", () => {
         }),
     });
     const { onCreated, unmount } = renderForm();
+    fireEvent.click(screen.getByRole("tab", { name: "Local folder" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Link existing project" }),
     );
@@ -239,6 +238,7 @@ describe("New project", () => {
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "My App" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     const folderInput = screen.getByLabelText<HTMLInputElement>("Folder name");
     fireEvent.change(folderInput, { target: { value: "Bad Folder!" } });
     expect(folderInput.getAttribute("aria-invalid")).toBe("true");
@@ -247,12 +247,12 @@ describe("New project", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("button", { name: "Choose location & create" })
+        .getByRole("button", { name: "Create project…" })
         .hasAttribute("disabled"),
     ).toBe(true);
   });
 
-  it("lists CoinKiwi from Pockets Hub with its repo description and pulls it on click", async () => {
+  it("lists CoinKiwi from Pockets Hub on the default tab with its repo description and pulls it on click", async () => {
     const coinKiwiProject = {
       id: "coinkiwi-id",
       manifest: { metadata: { name: "CoinKiwi" } },
@@ -260,14 +260,14 @@ describe("New project", () => {
     stubInvoke({ add_github_pocket: () => coinKiwiProject });
     const { onCreated } = renderForm();
 
-    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
-    expect(await within(hubSection).findByText("CoinKiwi")).toBeTruthy();
+    const hubPanel = screen.getByRole("tabpanel", { name: "Pockets Hub" });
+    expect(await within(hubPanel).findByText("CoinKiwi")).toBeTruthy();
     expect(
-      within(hubSection).getByText(
+      within(hubPanel).getByText(
         "Track crypto portfolios and NZD prices locally.",
       ),
     ).toBeTruthy();
-    const repoLink = within(hubSection).getByRole("link", {
+    const repoLink = within(hubPanel).getByRole("link", {
       name: "runpockets/coinkiwi",
     });
     expect(repoLink.getAttribute("href")).toBe(
@@ -275,12 +275,12 @@ describe("New project", () => {
     );
     expect(repoLink.getAttribute("target")).toBe("_blank");
     expect(repoLink.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(within(hubSection).queryByText(/web service|setting/)).toBeNull();
-    expect(within(hubSection).getByText(/with Podman/)).toBeTruthy();
+    expect(within(hubPanel).queryByText(/web service|setting/)).toBeNull();
+    expect(within(hubPanel).getByText(/with Podman/)).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(
-        within(hubSection).getByRole("button", { name: "Add to Pockets" }),
+        within(hubPanel).getByRole("button", { name: "Add to Pockets" }),
       );
     });
     expect(native).toHaveBeenCalledWith("add_github_pocket", {
@@ -303,13 +303,13 @@ describe("New project", () => {
     });
     const { onSelectProject } = renderForm();
 
-    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
-    expect(await within(hubSection).findByText("In your Pockets")).toBeTruthy();
-    const favicon = hubSection.querySelector("img.new-project-hub-favicon");
+    const hubPanel = screen.getByRole("tabpanel", { name: "Pockets Hub" });
+    expect(await within(hubPanel).findByText("In your Pockets")).toBeTruthy();
+    const favicon = hubPanel.querySelector("img.new-project-hub-favicon");
     expect(favicon?.getAttribute("src")).toBe(
       "/api/projects/existing-coinkiwi/favicon",
     );
-    const manageBtn = within(hubSection).getByRole("button", {
+    const manageBtn = within(hubPanel).getByRole("button", {
       name: "Manage",
     });
     fireEvent.click(manageBtn);
@@ -319,10 +319,10 @@ describe("New project", () => {
   it("shows a Hub Pocket's site favicon once loaded and renders nothing when missing", async () => {
     renderForm();
 
-    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
-    await within(hubSection).findByText("CoinKiwi");
+    const hubPanel = screen.getByRole("tabpanel", { name: "Pockets Hub" });
+    await within(hubPanel).findByText("CoinKiwi");
 
-    const img = hubSection.querySelector("img.new-project-hub-favicon")!;
+    const img = hubPanel.querySelector("img.new-project-hub-favicon")!;
     expect(img).toBeTruthy();
     expect(img.getAttribute("src")).toBe(
       "/api/hub/favicon?repo=runpockets%2Fcoinkiwi",
@@ -333,16 +333,17 @@ describe("New project", () => {
     expect(img.getAttribute("data-loaded")).toBe("true");
 
     fireEvent.error(img);
-    expect(hubSection.querySelector("img.new-project-hub-favicon")).toBeNull();
+    expect(hubPanel.querySelector("img.new-project-hub-favicon")).toBeNull();
   });
 
-  it("validates a GitHub repository before pulling and shows its manifest preview", async () => {
+  it("validates a GitHub repository on the GitHub tab before pulling and shows its manifest preview", async () => {
     stubInvoke({
       inspect_github_pocket: () => validPreview,
       add_github_pocket: () => project,
     });
     const { onCreated } = renderForm();
 
+    fireEvent.click(screen.getByRole("tab", { name: "GitHub" }));
     fireEvent.change(screen.getByLabelText("GitHub repository"), {
       target: { value: "https://github.com/runpockets/coinkiwi" },
     });
@@ -394,6 +395,7 @@ describe("New project", () => {
     });
     renderForm();
 
+    fireEvent.click(screen.getByRole("tab", { name: "GitHub" }));
     const input = screen.getByLabelText("GitHub repository");
     fireEvent.change(input, { target: { value: "octocat/hello-world" } });
     await act(async () => {

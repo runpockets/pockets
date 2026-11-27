@@ -544,23 +544,57 @@ describe("PocketSidebar truthful status", () => {
 });
 
 describe("PocketSidebar callbacks and states", () => {
-  it("fires onNewPocket from the title row plus button without selecting anything", () => {
+  it("fires onNewPocket from the top section row without selecting anything", () => {
     const { props, container } = renderSidebar(
       makeCatalog({ projects: [makeProject("notes")] }),
+      { page: "live" },
     );
-    // Exact accessible name: the plus icon is aria-hidden decoration; the
-    // native tooltip carries the shortcut (v3 §7, §9.4).
     const button = screen.getByRole("button", { name: "New pocket" });
     expect(button.getAttribute("title")).toBe("New pocket ⌘N");
+    expect(button.getAttribute("aria-current")).toBeNull();
+    expect(button.classList.contains("pocket-sidebar-section")).toBe(true);
+    expect(button.querySelector(".pocket-sidebar-section-count")).toBeNull();
+    expect(
+      container.querySelector(
+        '.pocket-sidebar-titlebar button[aria-label="New pocket"]',
+      ),
+    ).toBeNull();
+
     fireEvent.click(button);
     expect(props.onNewPocket).toHaveBeenCalledTimes(1);
     expect(props.onSelectProject).not.toHaveBeenCalled();
-    // The v1 "+ new" wording is gone, and with it the 40px body button (§3.4).
     expect(screen.queryByText(/\+ new/)).toBeNull();
-    expect(container.querySelector(".pocket-sidebar-new")).toBeNull();
     expect(screen.getAllByRole("button", { name: /new pocket/i })).toHaveLength(
       1,
     );
+  });
+
+  it("marks the top section New pocket row current only when on the new-pocket workspace view", () => {
+    const { rerender, props } = renderSidebar(
+      makeCatalog({ projects: [makeProject("notes")] }),
+      { page: "workspace", selectedProjectId: null },
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "New pocket" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+
+    rerender(
+      <PocketSidebar {...props} page="workspace" selectedProjectId="notes" />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "New pocket" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+
+    rerender(<PocketSidebar {...props} page="live" selectedProjectId={null} />);
+    expect(
+      screen
+        .getByRole("button", { name: "New pocket" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
   });
 
   it("renders the title row with a pressed toggle that collapses the column", () => {
@@ -923,9 +957,9 @@ describe("PocketSidebar footer meters", () => {
     cleanup();
     renderSidebar(makeCatalog(), { cpuCores: 1, hostCpuCores: 1 });
     await settle();
-    expect(
-      screen.getByRole("tooltip", { hidden: true }).textContent,
-    ).toContain("1 core available to Podman.");
+    expect(screen.getByRole("tooltip", { hidden: true }).textContent).toContain(
+      "1 core available to Podman.",
+    );
   });
 });
 

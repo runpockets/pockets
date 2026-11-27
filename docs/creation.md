@@ -72,8 +72,8 @@ npm run pocket -- validate ./my-pocket/pocket.yaml
 ```
 
 Pockets bundles the same `templates/basic-pocket` text starter used by this
-CLI. It includes a manifest, container definition, health endpoint, persistent
-visit-count demonstration, tests, formatter scripts, and coding-tool instructions.
+CLI. It includes a manifest, container definition, health endpoint, tests,
+formatter scripts, and coding-tool instructions.
 The CLI destination must be new; its final directory name becomes
 the Pocket manifest ID and its title-cased display name. The web UI permits a
 separate display name. Neither path installs dependencies or executes code.

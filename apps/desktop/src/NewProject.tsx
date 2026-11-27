@@ -55,15 +55,23 @@ function safeExternalUrl(url?: string | null): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
-function hostRuntimeNote(): string {
+function isMacHost(): boolean {
   if (typeof navigator !== "undefined") {
     const platform = `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`;
     if (/mac/i.test(platform)) {
-      return "Runs on this Mac with Podman";
+      return true;
     }
   }
-  return "Runs on this computer with Podman";
+  return false;
 }
+
+function hostRuntimeNote(): string {
+  return isMacHost()
+    ? "Runs on this Mac with Podman"
+    : "Runs on this computer with Podman";
+}
+
+type ExistingTab = "hub" | "github" | "folder";
 
 function capabilitySummary(
   runtimeVariables?: RuntimeVariable[],
@@ -177,10 +185,7 @@ function HubPocketCard({
               className="new-project-hub-source-link"
             >
               <span>{pocket.repo}</span>
-              <span
-                className="new-project-hub-source-arrow"
-                aria-hidden="true"
-              >
+              <span className="new-project-hub-source-arrow" aria-hidden="true">
                 ↗
               </span>
             </a>
@@ -249,6 +254,8 @@ export default function NewProject({
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
   const [customFolder, setCustomFolder] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(false);
+  const [existingTab, setExistingTab] = useState<ExistingTab>("hub");
 
   const [hubPockets, setHubPockets] = useState<HubPocket[]>([]);
   const [hubLoading, setHubLoading] = useState(true);
@@ -266,6 +273,7 @@ export default function NewProject({
   const [error, setError] = useState<string | null>(null);
 
   const folderErrorId = useId();
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -274,6 +282,12 @@ export default function NewProject({
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (editingFolder) {
+      folderInputRef.current?.focus();
+    }
+  }, [editingFolder]);
 
   useEffect(() => {
     let cancelled = false;
@@ -363,6 +377,7 @@ export default function NewProject({
   const folderValid = FOLDER_RE.test(folder) && folder.length <= 63;
   const showFolderError =
     !folderValid && (folder.length > 0 || customFolder || name.trim() !== "");
+  const showFolderInput = editingFolder || showFolderError;
   const createValid = name.trim() !== "" && name.length <= 80 && folderValid;
 
   return (
@@ -398,189 +413,15 @@ export default function NewProject({
             </p>
           )}
 
-          <section className="new-project-section" aria-label="Pockets Hub">
-            <div className="new-project-intro">
-              <h2>Pockets Hub</h2>
-              <p className="hint">
-                Pull ready-to-run Pockets directly from their repositories.
-                Pulling clones the source without running code — you choose
-                Preview or Build &amp; start.
-              </p>
-            </div>
-
-            {hubError && (
-              <p role="alert" className="error">
-                {hubError}
-              </p>
-            )}
-
-            {hubLoading && hubPockets.length === 0 ? (
-              <p className="hint">Loading featured Pockets…</p>
-            ) : hubPockets.length > 0 ? (
-              <ul className="new-project-hub-grid">
-                {hubPockets.map((pocket) => (
-                  <HubPocketCard
-                    key={pocket.repo}
-                    pocket={pocket}
-                    busy={busy}
-                    isPulling={pullingRepo === pocket.repo}
-                    onPullRepo={(repo) => void pullGitHubRepo(repo)}
-                    onSelectProject={onSelectProject}
-                  />
-                ))}
-              </ul>
-            ) : null}
-          </section>
-
           <section
-            className="new-project-section"
-            aria-label="Pull from GitHub"
-          >
-            <div className="new-project-intro">
-              <h2>Pull from GitHub</h2>
-              <p className="hint">
-                Enter any public GitHub Pocket repository. Pockets checks its{" "}
-                <code>pocket.yaml</code> and <code>Containerfile</code> before
-                cloning.
-              </p>
-            </div>
-            <form
-              className="new-project-github-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void inspectGitHubRepo();
-              }}
-              aria-busy={inspecting || busy}
-            >
-              <div className="new-project-github">
-                <input
-                  type="text"
-                  value={githubSource}
-                  disabled={busy || inspecting}
-                  aria-label="GitHub repository"
-                  onChange={(event) => {
-                    setGithubSource(event.target.value);
-                    setRepoPreview(null);
-                    setInspectError(null);
-                  }}
-                  placeholder="owner/repo or https://github.com/owner/repo"
-                />
-                <button
-                  type="submit"
-                  disabled={busy || inspecting || githubSource.trim() === ""}
-                >
-                  {inspecting ? "Checking…" : "Check repo"}
-                </button>
-              </div>
-            </form>
-
-            {inspectError && (
-              <p role="alert" className="error">
-                {inspectError}
-              </p>
-            )}
-
-            {repoPreview && (
-              <div
-                className="new-project-repo-preview"
-                role="region"
-                aria-label="Validated repository preview"
-              >
-                <div className="new-project-repo-status">
-                  <StatusPip
-                    tone={repoPreview.hostSupported ? "ok" : "warn"}
-                    word={
-                      repoPreview.hostSupported
-                        ? "Valid Pocket repository"
-                        : "Incompatible host architecture"
-                    }
-                  />
-                  {safeExternalUrl(repoPreview.repoUrl) ? (
-                    <a
-                      href={repoPreview.repoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="new-project-repo-slug new-project-repo-link"
-                    >
-                      {repoPreview.slug}
-                    </a>
-                  ) : (
-                    <span className="new-project-repo-slug">
-                      {repoPreview.slug}
-                    </span>
-                  )}
-                </div>
-                <div className="new-project-hub-title-row">
-                  <h3 className="new-project-hub-name">
-                    {repoPreview.manifest.metadata.name}
-                  </h3>
-                  <span className="new-project-tag">
-                    {formatVersionTag(repoPreview.manifest.metadata.version)}
-                  </span>
-                </div>
-                <p className="new-project-hub-description">
-                  {repoPreview.manifest.metadata.description}
-                </p>
-                {(() => {
-                  const caps = capabilitySummary(
-                    repoPreview.manifest.runtimeVariables,
-                    repoPreview.manifest.previewApis,
-                  );
-                  const archs =
-                    repoPreview.manifest.runtime.architectures.join(", ");
-                  return (
-                    <p className="new-project-hub-meta">
-                      <span>Arch: {archs}</span>
-                      {caps && <span> · {caps}</span>}
-                    </p>
-                  );
-                })()}
-                {!repoPreview.hostSupported && repoPreview.hostError && (
-                  <p className="error">{repoPreview.hostError}</p>
-                )}
-                <div className="new-project-repo-actions">
-                  {repoPreview.existingProjectId && onSelectProject ? (
-                    <>
-                      <span className="new-project-hub-added">
-                        <StatusPip tone="ok" word="In your Pockets" />
-                      </span>
-                      <button
-                        type="button"
-                        className="new-project-hub-action"
-                        disabled={busy}
-                        onClick={() =>
-                          onSelectProject(repoPreview.existingProjectId!)
-                        }
-                      >
-                        Manage
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="button-primary new-project-action-right"
-                      disabled={busy || !repoPreview.hostSupported}
-                      onClick={() => void pullGitHubRepo(repoPreview.slug)}
-                    >
-                      {pullingRepo === repoPreview.slug
-                        ? "Pulling…"
-                        : "Pull Pocket"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section
-            className="new-project-section"
+            className="new-project-section new-project-create-section"
             aria-label="Create a project"
           >
             <div className="new-project-intro">
-              <h2>Create a project</h2>
+              <h2 className="new-project-heading">Create a project</h2>
               <p className="hint">
-                Start from a runnable Node template, build in your preferred
-                coding tool, and watch saved edits refresh in Pockets.
+                Start from a runnable Node template, build it in your coding
+                tool, and watch saved edits refresh here.
               </p>
             </div>
             <form
@@ -591,85 +432,375 @@ export default function NewProject({
               }}
               aria-busy={busy}
             >
-              <label>
-                Project name
-                <input
-                  value={name}
-                  maxLength={80}
-                  required
-                  disabled={busy}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setName(value);
-                    if (!customFolder)
-                      setFolder(
-                        value
-                          .normalize("NFKD")
-                          .replace(/[\u0300-\u036f]/g, "")
-                          .toLowerCase()
-                          .replace(/[^a-z0-9]+/g, "-")
-                          .replace(/^-|-$/g, "")
-                          .slice(0, 63)
-                          .replace(/-$/, ""),
-                      );
-                  }}
-                  placeholder="My portfolio"
-                />
-              </label>
-              <label>
-                Folder name
-                <input
-                  value={folder}
-                  maxLength={63}
-                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                  required
-                  disabled={busy}
-                  aria-invalid={showFolderError || undefined}
-                  aria-describedby={showFolderError ? folderErrorId : undefined}
-                  onChange={(event) => {
-                    setCustomFolder(true);
-                    setFolder(event.target.value);
-                  }}
-                  placeholder="my-portfolio"
-                />
-              </label>
-              {showFolderError && (
-                <p id={folderErrorId} className="error">
-                  Use lowercase letters, numbers, and single hyphens (for
-                  example, my-portfolio).
+              <div className="new-project-field-group">
+                <label className="new-project-field">
+                  <span className="new-project-field-label">Project name</span>
+                  <input
+                    className="new-project-name-input"
+                    value={name}
+                    maxLength={80}
+                    required
+                    disabled={busy}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setName(value);
+                      if (!customFolder)
+                        setFolder(
+                          value
+                            .normalize("NFKD")
+                            .replace(/[\u0300-\u036f]/g, "")
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-")
+                            .replace(/^-|-$/g, "")
+                            .slice(0, 63)
+                            .replace(/-$/, ""),
+                        );
+                    }}
+                    placeholder="Habit tracker"
+                  />
+                </label>
+
+                {showFolderInput ? (
+                  <div className="new-project-folder-editor">
+                    <div className="new-project-folder-editor-row">
+                      <label className="new-project-folder-label">
+                        <span className="new-project-folder-prefix">
+                          Folder name
+                        </span>
+                        <input
+                          ref={folderInputRef}
+                          value={folder}
+                          maxLength={63}
+                          pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                          required
+                          disabled={busy}
+                          aria-invalid={showFolderError || undefined}
+                          aria-describedby={
+                            showFolderError ? folderErrorId : undefined
+                          }
+                          onChange={(event) => {
+                            setCustomFolder(true);
+                            setFolder(event.target.value);
+                          }}
+                          placeholder="habit-tracker"
+                        />
+                      </label>
+                      {folderValid && (
+                        <button
+                          type="button"
+                          className="new-project-link-button"
+                          disabled={busy}
+                          onClick={() => setEditingFolder(false)}
+                        >
+                          Done
+                        </button>
+                      )}
+                    </div>
+                    {showFolderError && (
+                      <p id={folderErrorId} className="error">
+                        Use lowercase letters, numbers, and single hyphens (for
+                        example, habit-tracker).
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="new-project-folder-inline">
+                    <span className="new-project-folder-prefix">Folder</span>
+                    <span
+                      className={
+                        folder
+                          ? "new-project-folder-value"
+                          : "new-project-folder-placeholder"
+                      }
+                    >
+                      {folder || "habit-tracker"}
+                    </span>
+                    <span className="new-project-folder-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    <button
+                      type="button"
+                      className="new-project-link-button"
+                      disabled={busy}
+                      onClick={() => setEditingFolder(true)}
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="new-project-submit-row">
+                <button
+                  type="submit"
+                  className="button-primary new-project-submit-button"
+                  disabled={busy || !createValid}
+                >
+                  {busy && pullingRepo === null
+                    ? "Working…"
+                    : "Create project…"}
+                </button>
+                <p className="hint new-project-submit-hint">
+                  Pockets scaffolds a new folder with the starter app, manifest,
+                  tests, and agent instructions.
                 </p>
-              )}
-              <p className="hint">
-                Choose a parent folder next. Pockets creates a new subfolder
-                named {folder || "after your project"} and never overwrites an
-                existing folder.
-              </p>
-              <button
-                type="submit"
-                className="button-primary"
-                disabled={busy || !createValid}
-              >
-                {busy && pullingRepo === null
-                  ? "Working…"
-                  : "Choose location & create"}
-              </button>
+              </div>
             </form>
-            <p className="hint">
-              The starter includes a runnable Node app, tests and instructions
-              for your coding tool. Creating it runs no code.
-            </p>
           </section>
 
-          <div className="new-project-existing">
-            <p className="hint">Already have a Pocket source folder?</p>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void submitCreateOrLink(true)}
+          <section
+            className="new-project-section new-project-existing-section"
+            aria-label="Start from an existing Pocket"
+          >
+            <h2 className="new-project-subheading">
+              Or start from an existing Pocket
+            </h2>
+
+            <div
+              className="new-project-tabs"
+              role="tablist"
+              aria-label="Start from an existing Pocket"
             >
-              Link existing project
-            </button>
-          </div>
+              <button
+                type="button"
+                role="tab"
+                id="new-project-tab-hub"
+                aria-selected={existingTab === "hub"}
+                aria-controls="new-project-panel-hub"
+                className="new-project-tab"
+                onClick={() => setExistingTab("hub")}
+              >
+                Pockets Hub
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="new-project-tab-github"
+                aria-selected={existingTab === "github"}
+                aria-controls="new-project-panel-github"
+                className="new-project-tab"
+                onClick={() => setExistingTab("github")}
+              >
+                GitHub
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="new-project-tab-folder"
+                aria-selected={existingTab === "folder"}
+                aria-controls="new-project-panel-folder"
+                className="new-project-tab"
+                onClick={() => setExistingTab("folder")}
+              >
+                Local folder
+              </button>
+            </div>
+
+            {existingTab === "hub" && (
+              <div
+                role="tabpanel"
+                id="new-project-panel-hub"
+                aria-labelledby="new-project-tab-hub"
+                className="new-project-tabpanel"
+              >
+                <p className="hint">
+                  Ready-to-run Pockets. Pulling copies the source without
+                  running it.
+                </p>
+
+                {hubError && (
+                  <p role="alert" className="error">
+                    {hubError}
+                  </p>
+                )}
+
+                {hubLoading && hubPockets.length === 0 ? (
+                  <p className="hint">Loading featured Pockets…</p>
+                ) : hubPockets.length > 0 ? (
+                  <ul className="new-project-hub-grid">
+                    {hubPockets.map((pocket) => (
+                      <HubPocketCard
+                        key={pocket.repo}
+                        pocket={pocket}
+                        busy={busy}
+                        isPulling={pullingRepo === pocket.repo}
+                        onPullRepo={(repo) => void pullGitHubRepo(repo)}
+                        onSelectProject={onSelectProject}
+                      />
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )}
+
+            {existingTab === "github" && (
+              <div
+                role="tabpanel"
+                id="new-project-panel-github"
+                aria-labelledby="new-project-tab-github"
+                className="new-project-tabpanel"
+              >
+                <p className="hint">
+                  Enter any public GitHub Pocket repository. Pockets checks its{" "}
+                  <code>pocket.yaml</code> and <code>Containerfile</code> before
+                  cloning.
+                </p>
+                <form
+                  className="new-project-github-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void inspectGitHubRepo();
+                  }}
+                  aria-busy={inspecting || busy}
+                >
+                  <div className="new-project-github">
+                    <input
+                      type="text"
+                      value={githubSource}
+                      disabled={busy || inspecting}
+                      aria-label="GitHub repository"
+                      onChange={(event) => {
+                        setGithubSource(event.target.value);
+                        setRepoPreview(null);
+                        setInspectError(null);
+                      }}
+                      placeholder="owner/repo or https://github.com/owner/repo"
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        busy || inspecting || githubSource.trim() === ""
+                      }
+                    >
+                      {inspecting ? "Checking…" : "Check repo"}
+                    </button>
+                  </div>
+                </form>
+
+                {inspectError && (
+                  <p role="alert" className="error">
+                    {inspectError}
+                  </p>
+                )}
+
+                {repoPreview && (
+                  <div
+                    className="new-project-repo-preview"
+                    role="region"
+                    aria-label="Validated repository preview"
+                  >
+                    <div className="new-project-repo-status">
+                      <StatusPip
+                        tone={repoPreview.hostSupported ? "ok" : "warn"}
+                        word={
+                          repoPreview.hostSupported
+                            ? "Valid Pocket repository"
+                            : "Incompatible host architecture"
+                        }
+                      />
+                      {safeExternalUrl(repoPreview.repoUrl) ? (
+                        <a
+                          href={repoPreview.repoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="new-project-repo-slug new-project-repo-link"
+                        >
+                          {repoPreview.slug}
+                        </a>
+                      ) : (
+                        <span className="new-project-repo-slug">
+                          {repoPreview.slug}
+                        </span>
+                      )}
+                    </div>
+                    <div className="new-project-hub-title-row">
+                      <h3 className="new-project-hub-name">
+                        {repoPreview.manifest.metadata.name}
+                      </h3>
+                      <span className="new-project-tag">
+                        {formatVersionTag(
+                          repoPreview.manifest.metadata.version,
+                        )}
+                      </span>
+                    </div>
+                    <p className="new-project-hub-description">
+                      {repoPreview.manifest.metadata.description}
+                    </p>
+                    {(() => {
+                      const caps = capabilitySummary(
+                        repoPreview.manifest.runtimeVariables,
+                        repoPreview.manifest.previewApis,
+                      );
+                      const archs =
+                        repoPreview.manifest.runtime.architectures.join(", ");
+                      return (
+                        <p className="new-project-hub-meta">
+                          <span>Arch: {archs}</span>
+                          {caps && <span> · {caps}</span>}
+                        </p>
+                      );
+                    })()}
+                    {!repoPreview.hostSupported && repoPreview.hostError && (
+                      <p className="error">{repoPreview.hostError}</p>
+                    )}
+                    <div className="new-project-repo-actions">
+                      {repoPreview.existingProjectId && onSelectProject ? (
+                        <>
+                          <span className="new-project-hub-added">
+                            <StatusPip tone="ok" word="In your Pockets" />
+                          </span>
+                          <button
+                            type="button"
+                            className="new-project-hub-action"
+                            disabled={busy}
+                            onClick={() =>
+                              onSelectProject(repoPreview.existingProjectId!)
+                            }
+                          >
+                            Manage
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="button-primary new-project-action-right"
+                          disabled={busy || !repoPreview.hostSupported}
+                          onClick={() => void pullGitHubRepo(repoPreview.slug)}
+                        >
+                          {pullingRepo === repoPreview.slug
+                            ? "Pulling…"
+                            : "Pull Pocket"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {existingTab === "folder" && (
+              <div
+                role="tabpanel"
+                id="new-project-panel-folder"
+                aria-labelledby="new-project-tab-folder"
+                className="new-project-tabpanel"
+              >
+                <p className="hint">
+                  Link an existing Pocket folder for live preview and
+                  installation. Linking runs no code.
+                </p>
+                <div className="new-project-folder-actions">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitCreateOrLink(true)}
+                  >
+                    Link existing project
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>

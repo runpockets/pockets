@@ -22,10 +22,12 @@ export interface DirectoryListing {
 
 export interface FolderPickRequest {
   title: string;
-  description: string;
+  description?: string;
   confirmLabel: string;
   /** When true, highlights folders containing `pocket.yaml`. */
   preferPocketFolder?: boolean;
+  /** Optional subfolder name that will be created inside the chosen folder. */
+  createSubfolder?: string;
 }
 
 type FolderPickerHandler = (
@@ -231,11 +233,14 @@ export async function invoke<T = unknown>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   if (command === "create_development_project" && !args?.parentPath) {
+    const folderName =
+      typeof args?.folderName === "string" && args.folderName.trim() !== ""
+        ? args.folderName.trim()
+        : undefined;
     const parentPath = await pickFolder({
       title: "Choose parent folder",
-      description:
-        "Pockets will create a new subfolder inside the folder you choose.",
       confirmLabel: "Create here",
+      createSubfolder: folderName,
     });
     if (parentPath === null) return null as T;
     return rpcCall<T>(command, { ...args, parentPath });
