@@ -24,14 +24,14 @@ Pockets ships as a single cross-platform Rust binary (`pockets`, built from `cra
 
 - Per-Pocket runtime variables and secrets are stored separately for **Preview** and **Installed** environments.
 - On macOS, Linux, and Windows, secrets are stored in an owner-only (`0700` dir / `0600` file, atomic write) local vault inside Pockets' data directory so secrets survive unsigned CLI/Homebrew upgrades and background service restarts cleanly (on macOS, readable legacy Keychain items are transparently migrated into the vault on first read).
-- Secrets are injected into Podman via stdin/scoped engine secrets — never written into snapshots, build contexts, manifests, or container CLI arguments.
+- Secrets are injected into Podman via stdin/scoped engine secrets, never written into snapshots, build contexts, manifests, or container CLI arguments.
 
 ## Private Tailnet Access via Tailscale Serve
 
 Installed Pockets can be explicitly opted in per Pocket to private tailnet access via Tailscale Serve (`tailscale serve --bg --yes --https=<port> http://127.0.0.1:<port>`):
 
 - While at least one Pocket is opted in and the Pockets daemon is running, a lightweight loopback portal (`127.0.0.1:18787`, proxied on Tailscale HTTPS port `443` when free) serves an HTML Pocket launcher at `/` and `302 Found` redirects from `/<pocket-slug>` to each Pocket's own HTTPS port.
-- Containers remain bound exclusively to `127.0.0.1` — Podman never binds `0.0.0.0`, and `tailscale funnel` (public internet) and `tailscale serve reset` are never invoked.
+- Containers remain bound exclusively to `127.0.0.1`. Podman never binds `0.0.0.0`, and `tailscale funnel` (public internet) and `tailscale serve reset` are never invoked.
 - Before adding or removing any route, Pockets inspects `tailscale serve status --json` and refuses to overwrite or remove unrelated user Serve routes, falling back to direct port URLs if port `443` is occupied.
 - Stopping a Pocket pauses its owned Serve route while remembering opt-in; starting restores it; deleting removes both the route and saved preference.
 

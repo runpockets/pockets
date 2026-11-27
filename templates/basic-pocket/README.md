@@ -2,7 +2,7 @@
 
 A starter Pocket built from the basic template: a dependency-free Node HTTP
 server with an HTTP health check and a visit count persisted to `/data`, the
-Pocket storage volume. It shows the contract Pockets expects — replace
+Pocket storage volume. It shows the contract Pockets expects: replace
 `server.js` with your own app and keep the lifecycle bits.
 
 ## Run in Pockets
@@ -28,8 +28,8 @@ copied or changed, and external source edits never deploy an update by themselve
 
 ## Endpoints
 
-- `GET /` — hello page with a persistent visit count.
-- `GET /health` — `200` with `{"status":"ok"}` for readiness checks.
+- `GET /`: hello page with a persistent visit count.
+- `GET /health`: `200` with `{"status":"ok"}` for readiness checks.
 
 The server binds `0.0.0.0:8080` (override with `HOST`/`PORT`) and stores
 `visits.json` in `/data` (override with `DATA_DIR`). In the container it runs

@@ -16,7 +16,7 @@ those repositories:
 - **Live descriptions stay in sync:** When Pockets loads the Hub, it fetches
   each listed repository's root `pocket.yaml` (`raw.githubusercontent.com/<owner>/<repo>/HEAD/pocket.yaml`)
   and validates it with Pockets' canonical manifest parser. The card's title,
-  version, and description come directly from `pocket.yaml` — the exact same
+  version, and description come directly from `pocket.yaml`, the exact same
   metadata shown on the live Pocket card.
 - **Offline & day-1 resilience:** Pockets caches the Hub catalog for 15 minutes
   and ships a bundled fallback (`crates/pockets-core/src/assets/hub-catalog.json`)

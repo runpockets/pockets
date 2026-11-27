@@ -1,13 +1,13 @@
 # Hello Pocket
 
 A tiny first-party example Pocket for Pockets M1: a dependency-free Node HTTP
-server that demonstrates the Pocket lifecycle — HTTP readiness via `/health`
+server that demonstrates the Pocket lifecycle: HTTP readiness via `/health`
 and persistent data in a container volume.
 
 ## Endpoints
 
-- `GET /` — hello-world page with a persistent visit count.
-- `GET /health` — `200` with `{"status":"ok"}` for readiness checks.
+- `GET /`: hello-world page with a persistent visit count.
+- `GET /health`: `200` with `{"status":"ok"}` for readiness checks.
 
 The server binds `0.0.0.0:8080` in the container (override with `HOST`/`PORT`)
 and stores `visits.json` in `/data` (override with `DATA_DIR`). It runs as the

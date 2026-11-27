@@ -14,7 +14,7 @@ identity; do not generate a separate project or edit Pockets' managed snapshots.
 - Bind the server to `HOST` and `PORT` provided by Pockets, with container
   defaults `0.0.0.0` and `8080`. Keep the manifest health endpoint working.
 - Persist app data and temporary files under `DATA_DIR` (default `/data`),
-  never in source files — Preview mounts source **read-only** at `/work`.
+  never in source files. Preview mounts source **read-only** at `/work`.
   Use temporary data directories and ephemeral ports in tests. For API-backed
   apps, treat `DATA_DIR` (not browser `localStorage`) as the shared cache
   across browsers, devices, and container restarts.
@@ -61,15 +61,15 @@ identity; do not generate a separate project or edit Pockets' managed snapshots.
 
 ## Instant startup for API-backed Pockets (optional)
 
-- Use `DATA_DIR` — not browser `localStorage` — as the shared instant-load
+- Use `DATA_DIR` (not browser `localStorage`) as the shared instant-load
   cache across browsers, devices, and container restarts. Browser storage starts
   empty on a second device, while `DATA_DIR` already holds persisted data.
 - Avoid blocking first paint on upstream API fetches or sequential client boot
   waterfalls (for example, preferences → market data → status/quota checks).
   Serve persisted `DATA_DIR` cache immediately on initial page load
-  (stale-while-revalidate) via a fast local bootstrap/peek path — such as an
+  (stale-while-revalidate) via a fast local bootstrap/peek path (such as an
   optional `GET /api/bootstrap` returning cached payloads plus `needsRefresh`
-  flags — and refresh stale data and secondary status/quota checks in the
+  flags), and refresh stale data and secondary status/quota checks in the
   background.
 - The starter includes a dependency-free `lib/cache.js` helper
   (`createCache({ dataDir })`) with two-tier memory + atomic JSON persistence
@@ -80,7 +80,7 @@ identity; do not generate a separate project or edit Pockets' managed snapshots.
   - `getOrFetch(key, ttlMs, fetcher, options)` provides TTL-aware fetching,
     in-flight request coalescing, stale fallback on upstream error, and
     optional background revalidation (`staleWhileRevalidate: true`).
-- Caching and bootstrap endpoints are opt-in at the app/helper level — never a
+- Caching and bootstrap endpoints are opt-in at the app/helper level, never a
   mandatory platform contract (unlike `/health`), and `POCKETS_HTTPS_GATEWAY`
   does not cache responses blindly. Local-only or strict-freshness Pockets can
   ignore them.
@@ -113,7 +113,7 @@ If the user plans to publish this Pocket to GitHub and submit it to Pockets Hub:
 - Update `metadata.description` in `pocket.yaml` with a clear one-line summary
   of the app (this text is shown on both Hub cards and Live Pocket cards).
 - Bumping `metadata.version` in `pocket.yaml` is optional during everyday
-  development — Pockets tracks every Build/Update automatically in **Versions**
+  development; Pockets tracks every Build/Update automatically in **Versions**
   using `POCKETS_CHANGES.md`. Update `metadata.version` (for example `0.2.0` or
   `1.0.0`) when you want to label a milestone or release for Hub users.
 - For pure dependency-free Node apps with no native binaries, declare

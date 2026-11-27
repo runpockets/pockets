@@ -76,7 +76,7 @@ Supported headers include `Authorization`, `Accept`, `API-Key`, conditional
 request headers, and `X-…-Key` and `X-…-Token` headers. The gateway preserves API
 status codes such as `429` and supported response headers including
 `Retry-After`, and does not cache responses itself. Check `response.ok` and
-handle errors and stale data in the app — API-backed Pockets can opt into the
+handle errors and stale data in the app. API-backed Pockets can opt into the
 starter’s `lib/cache.js` helper under `DATA_DIR/cache` for shared
 stale-while-revalidate startup across browsers, devices, and restarts.
 

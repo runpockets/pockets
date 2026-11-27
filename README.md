@@ -4,11 +4,11 @@
   <img alt="Pockets" src="brand/pockets-wordmark-light.svg" height="44" />
 </picture>
 
-**Run personal self-hosted web apps locally — without managing containers.**
+**Run personal self-hosted web apps locally without managing containers.**
 
 Pockets is an open-source, local-first home for small self-hosted web apps on macOS, Linux, and homelabs. Build a Pocket in your preferred editor or coding tool, watch it live-reload in an isolated preview, and install it locally with persistent storage, native secrets, backups, version history, and optional private Tailscale access from your phone.
 
-Installed Pockets are ordinary containerized web apps with their own data volumes — self-contained, local, and completely yours.
+Installed Pockets are ordinary containerized web apps with their own data volumes: self-contained, local, and completely yours.
 
 ---
 
@@ -30,7 +30,7 @@ pockets
 
 Already using Podman Desktop or the official macOS installer? Run `brew install --ignore-dependencies runpockets/tap/pockets` to reuse your existing Podman.
 
-Bookmark `http://pockets.localhost:18786/` (or use Safari **File → Add to Dock…** / Chrome **Install App**) — from then on your saved URL just works.
+Bookmark `http://pockets.localhost:18786/` (or use Safari **File → Add to Dock…** / Chrome **Install App**). From then on, your saved URL just works.
 
 ### Linux (Desktop, Raspberry Pi, Homelab, Cloud VM / VPS)
 
@@ -62,7 +62,7 @@ Open the Pocket folder in your preferred coding tool and click **Start** in **Wo
 * Each installed Pocket gets a persistent loopback address (`http://<name>.localhost:18788+`) backed by a dedicated Podman named volume.
 * Store plain config and API secrets separately per environment (**Preview** vs **Installed app**) in an owner-only (`0600`) local vault inside Pockets' data directory.
 * Export and restore `.tar` data volume backups right from the browser, inspect version diffs, roll back installed versions, and monitor per-Pocket CPU & memory.
-* Toggle **Share on your tailnet** to publish a Pocket privately over HTTPS via `tailscale serve` (plus a port `443` Pocket Launcher and scannable QR code) — containers stay strictly on `127.0.0.1` and `tailscale funnel` is never used.
+* Toggle **Share on your tailnet** to publish a Pocket privately over HTTPS via `tailscale serve` (plus a port `443` Pocket Launcher and scannable QR code). Containers stay strictly on `127.0.0.1` and `tailscale funnel` is never used.
 
 ---
 
