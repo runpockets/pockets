@@ -269,6 +269,30 @@ export async function invoke<T = unknown>(
     return rpcCall<T>(command, { ...args, folderPath });
   }
 
+  if (command === "pick_parent_folder") {
+    const folderName =
+      typeof args?.folderName === "string" && args.folderName.trim() !== ""
+        ? args.folderName.trim()
+        : undefined;
+    return pickFolder({
+      title: "Choose parent folder",
+      confirmLabel: "Use folder",
+      createSubfolder: folderName,
+    }) as Promise<T>;
+  }
+
+  if (command === "inspect_pocketize_folder" && !args?.folderPath) {
+    const folderPath = await pickFolder({
+      title: "Choose project folder",
+      description:
+        "Select a Pocket folder to link, or any local project folder to pocketize.",
+      confirmLabel: "Choose folder",
+      preferPocketFolder: true,
+    });
+    if (folderPath === null) return null as T;
+    return rpcCall<T>(command, { ...args, folderPath });
+  }
+
   if (command === "import_project" && !args?.folderPath) {
     const folderPath = await pickFolder({
       title: "Import Pocket folder",

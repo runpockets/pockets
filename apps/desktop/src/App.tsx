@@ -13,7 +13,42 @@ import PocketSidebar, {
   type PocketUsage,
   type ResourceSnapshot,
 } from "./PocketSidebar";
-import ExternalWorkspace from "./ExternalWorkspace";
+import ExternalWorkspace, {
+  type PocketizeSourceInfo,
+} from "./ExternalWorkspace";
+
+const POCKETIZE_HANDOFF_STORAGE_KEY = "pockets:pocketize-handoff";
+
+function loadPocketizeSources(): Record<string, PocketizeSourceInfo> {
+  try {
+    const raw = window.sessionStorage.getItem(POCKETIZE_HANDOFF_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, PocketizeSourceInfo>;
+    }
+  } catch {
+    // Ignore storage read errors in restricted environments.
+  }
+  return {};
+}
+
+function savePocketizeSources(
+  sources: Record<string, PocketizeSourceInfo>,
+): void {
+  try {
+    if (Object.keys(sources).length === 0) {
+      window.sessionStorage.removeItem(POCKETIZE_HANDOFF_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(
+        POCKETIZE_HANDOFF_STORAGE_KEY,
+        JSON.stringify(sources),
+      );
+    }
+  } catch {
+    // Ignore storage write errors in restricted environments.
+  }
+}
 import NewProject from "./NewProject";
 import PreviewPanel, { type PreviewBounds } from "./PreviewPanel";
 import { useProjectPreview } from "./useProjectPreview";
@@ -699,9 +734,19 @@ export default function App() {
     setStoredCatalog(next);
   }, []);
 
+  const [pocketizeSources, setPocketizeSources] =
+    useState<Record<string, PocketizeSourceInfo>>(loadPocketizeSources);
+
   const handleDevelopmentCreated = useCallback(
-    (project: Project) => {
+    (project: Project, pocketizeSource?: PocketizeSourceInfo) => {
       setDevelopmentHandoff(project);
+      if (pocketizeSource) {
+        setPocketizeSources((prev) => {
+          const next = { ...prev, [project.id]: pocketizeSource };
+          savePocketizeSources(next);
+          return next;
+        });
+      }
       setRefreshKey((key) => key + 1);
       const current = routeRef.current;
       if (current.page === "workspace" && current.projectId === null)
@@ -1002,6 +1047,17 @@ export default function App() {
                           projectName={selectedProject.manifest.metadata.name}
                           faviconCacheKey={selectedFaviconCacheKey}
                           linked={selectedProject.developmentLinked === true}
+                          containerfile={selectedProject.containerfile}
+                          projectFiles={selectedProject.files}
+                          pocketizeSource={pocketizeSources[selectedProject.id]}
+                          onDismissPocketizeSource={() =>
+                            setPocketizeSources((prev) => {
+                              const next = { ...prev };
+                              delete next[selectedProject.id];
+                              savePocketizeSources(next);
+                              return next;
+                            })
+                          }
                           previewApiAccess={preview.apiAccess}
                           previewApis={selectedProject.manifest.previewApis}
                           building={catalog.buildingProjectId !== null}

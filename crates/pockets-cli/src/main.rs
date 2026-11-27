@@ -45,6 +45,11 @@ enum Commands {
         path: PathBuf,
         id: Option<String>,
     },
+    Init {
+        path: PathBuf,
+        name: Option<String>,
+        id: Option<String>,
+    },
     Add {
         source: String,
     },
@@ -108,6 +113,7 @@ Commands:
   new <NAME> [--parent DIR] [--folder SLUG]
                                           Create a new Pocket starter folder and register it
   link [PATH] [--id ID]                   Link an existing Pocket folder (default: .)
+  init [PATH] [--name NAME] [--id SLUG]   Pocketize an existing project folder in place and link it
   add <OWNER/REPO | GITHUB_URL>           Clone & register a Pocket from GitHub
   start <ID>                              Start an installed Pocket
   stop <ID>                               Stop a running Pocket
@@ -244,6 +250,36 @@ fn parse_cli(raw: &[String]) -> Result<Cli, String> {
                 }
             }
             Commands::Link { path, id }
+        }
+        "init" => {
+            let mut path = PathBuf::from(".");
+            let mut name = None;
+            let mut id = None;
+            let mut idx = 0;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--name" => {
+                        name = Some(
+                            args.get(idx + 1)
+                                .ok_or("Missing value for --name")?
+                                .clone(),
+                        );
+                        idx += 2;
+                    }
+                    "--id" => {
+                        id = Some(args.get(idx + 1).ok_or("Missing value for --id")?.clone());
+                        idx += 2;
+                    }
+                    other if other.starts_with('-') => {
+                        return Err(format!("Unknown option for init: {other}"));
+                    }
+                    positional => {
+                        path = PathBuf::from(positional);
+                        idx += 1;
+                    }
+                }
+            }
+            Commands::Init { path, name, id }
         }
         "add" => Commands::Add {
             source: args
@@ -460,6 +496,7 @@ async fn main() {
             folder,
         }) => run_new(ctx, name, parent, folder).await,
         Some(Commands::Link { path, id }) => run_link(ctx, path, id).await,
+        Some(Commands::Init { path, name, id }) => run_init(ctx, path, name, id).await,
         Some(Commands::Add { source }) => run_add(ctx, source).await,
         Some(Commands::Start { id }) => run_start(ctx, id).await,
         Some(Commands::Stop { id }) => run_stop(ctx, id).await,
@@ -1012,6 +1049,7 @@ async fn run_new(
         parent_dir.clone(),
         name,
         folder_slug.clone(),
+        None,
     )
     .await?;
     println!(
@@ -1033,6 +1071,59 @@ async fn run_link(ctx: AppContext, path: PathBuf, id: Option<String>) -> Result<
         project.id,
         canonical.display()
     );
+    Ok(())
+}
+
+async fn run_init(
+    ctx: AppContext,
+    path: PathBuf,
+    name: Option<String>,
+    id: Option<String>,
+) -> Result<(), String> {
+    let canonical = std::fs::canonicalize(&path)
+        .map_err(|err| format!("Could not resolve '{}': {err}", path.display()))?;
+    let inspection =
+        development_commands::inspect_pocketize_folder(&ctx, canonical.clone()).await?;
+    if inspection.already_pocket {
+        return Err(format!(
+            "'{}' already has a pocket.yaml. Run `pockets link {}` instead.",
+            inspection.folder_path, inspection.folder_path
+        ));
+    }
+    if !inspection.blockers.is_empty() {
+        return Err(inspection.blockers.join("\n"));
+    }
+    let resolved_name = name
+        .clone()
+        .unwrap_or_else(|| inspection.suggested_name.clone());
+    let resolved_id = id.unwrap_or_else(|| {
+        if let Some(explicit_name) = &name {
+            pockets_core::pocketize::slugify_folder_name(explicit_name)
+        } else {
+            inspection.suggested_id.clone()
+        }
+    });
+    let outcome = development_commands::pocketize_development_folder(
+        &ctx,
+        canonical.clone(),
+        resolved_name,
+        resolved_id,
+    )
+    .await?;
+    println!(
+        "Pocketized '{}' (id: {}) at {}",
+        outcome.project.manifest.metadata.name,
+        outcome.project.id,
+        canonical.display()
+    );
+    if !outcome.files_added.is_empty() {
+        println!("Added: {}", outcome.files_added.join(", "));
+    }
+    if !outcome.files_updated.is_empty() {
+        println!("Updated: {}", outcome.files_updated.join(", "));
+    }
+    println!("\nNext step — paste this prompt into your coding tool:");
+    println!("  {}", outcome.ai_prompt);
     Ok(())
 }
 
@@ -1290,6 +1381,39 @@ mod tests {
                 uninstall_podman: Some(true),
             }))
         ));
+    }
+
+    #[test]
+    fn parses_init_command() {
+        let default = parse_cli(&["init".to_owned()]).unwrap();
+        assert!(matches!(
+            default.command,
+            Some(Commands::Init {
+                path,
+                name: None,
+                id: None,
+            }) if path == PathBuf::from(".")
+        ));
+
+        let with_args = parse_cli(&[
+            "init".to_owned(),
+            "./my-app".to_owned(),
+            "--name".to_owned(),
+            "My App".to_owned(),
+            "--id".to_owned(),
+            "my-app".to_owned(),
+        ])
+        .unwrap();
+        match with_args.command {
+            Some(Commands::Init { path, name, id }) => {
+                assert_eq!(path, PathBuf::from("./my-app"));
+                assert_eq!(name.as_deref(), Some("My App"));
+                assert_eq!(id.as_deref(), Some("my-app"));
+            }
+            _ => panic!("expected Init command"),
+        }
+
+        assert!(parse_cli(&["init".to_owned(), "--unknown".to_owned()]).is_err());
     }
 
     #[test]

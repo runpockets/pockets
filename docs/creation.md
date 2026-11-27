@@ -10,8 +10,18 @@ installation and updates without needing a model connection for this workflow.
    then choose **Choose location & create**. The native picker selects a parent
    directory; Pockets creates a new subfolder and registers a linked draft. It
    never overwrites existing folders or executes code during creation.
-2. For existing source, choose **Link existing project** or **Link project**.
-   Linking the same folder returns its existing Pocket identity.
+2. For an existing local folder, open **From existing -> Local folder** and
+   choose **Choose local folder…**:
+   - If the folder already contains `pocket.yaml`, Pockets shows its manifest
+     name and ID and lets you click **Link folder** (or run `pockets link .`).
+   - If the folder does not contain `pocket.yaml`, Pockets lets you name the
+     new Pocket and click **Pocketize** to create a fresh starter Pocket inside
+     a `pocket/` subfolder of the selected project (with a **Change location**
+     option if you prefer a separate folder), then opens the workspace with a
+     one-click **Copy AI prompt** card so your coding tool can stay in the same
+     workspace and build the Pocket with Live Preview.
+   - Developers who want to wrap an existing repository in place with a custom
+     `Containerfile` can run `pockets init [path]` from the CLI.
 3. Use **Open folder** or **Copy folder path** beside the linked path. Open the
    folder as your coding tool’s workspace. The starter’s `AGENTS.md` points to
    the runtime requirements in `POCKETS.md`.

@@ -211,9 +211,27 @@ describe("New project", () => {
     ).toBe("Tracker");
   });
 
-  it("links existing source from the Folder tab without requiring creation fields, and reports registration after unmount", async () => {
+  it("shows the Already a Pocket summary and links on Link folder, reporting registration after unmount", async () => {
     let resolve!: (value: unknown) => void;
     stubInvoke({
+      inspect_pocketize_folder: () => ({
+        folderName: "notes-pocket",
+        folderPath: "~/Code/Pockets/notes-pocket",
+        alreadyPocket: true,
+        existingName: "Notes Pocket",
+        existingId: "notes-pocket",
+        suggestedName: "Notes Pocket",
+        suggestedId: "notes-pocket",
+        detectedStack: "Node.js",
+        hasServerJs: true,
+        hasDockerfile: false,
+        hasContainerfile: true,
+        filesToAdd: [],
+        filesToUpdate: [],
+        existingFilesKept: [],
+        warnings: [],
+        blockers: [],
+      }),
       link_development_folder: () =>
         new Promise((done) => {
           resolve = done;
@@ -221,16 +239,140 @@ describe("New project", () => {
     });
     const { onCreated, unmount } = renderForm();
     fireEvent.click(screen.getByRole("tab", { name: "Local folder" }));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Choose local folder…" }),
+      );
+    });
+    expect(native).toHaveBeenCalledWith("inspect_pocketize_folder", {});
+
+    const existing = await screen.findByRole("region", {
+      name: "Existing Pocket folder",
+    });
+    expect(within(existing).getByText("Already a Pocket")).toBeTruthy();
+    expect(within(existing).getByText("Notes Pocket")).toBeTruthy();
+
     fireEvent.click(
-      screen.getByRole("button", { name: "Link existing project" }),
+      within(existing).getByRole("button", { name: "Link folder" }),
     );
-    expect(native).toHaveBeenCalledWith("link_development_folder", {});
+    expect(native).toHaveBeenCalledWith("link_development_folder", {
+      folderPath: "~/Code/Pockets/notes-pocket",
+    });
     unmount();
     await act(async () => resolve(project));
     expect(onCreated).toHaveBeenCalledWith({
       ...project,
       developmentLinked: true,
     });
+  });
+
+  it("pocketizes a non-Pocket folder into a pocket subfolder inside the selected project by default", async () => {
+    stubInvoke({
+      inspect_pocketize_folder: () => ({
+        folderName: "dabn",
+        folderPath: "~/Code/personal/dabn",
+        alreadyPocket: false,
+        suggestedName: "Dabn",
+        suggestedId: "dabn",
+        suggestedSubfolder: "pocket",
+        detectedStack: "Rust",
+        hasServerJs: false,
+        hasDockerfile: false,
+        hasContainerfile: false,
+        filesToAdd: [],
+        filesToUpdate: [],
+        existingFilesKept: [],
+        warnings: [],
+        blockers: [],
+      }),
+      create_development_project: () => project,
+    });
+    const { onCreated } = renderForm();
+    fireEvent.click(screen.getByRole("tab", { name: "Local folder" }));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Choose local folder…" }),
+      );
+    });
+
+    const card = await screen.findByRole("form", {
+      name: "Pocketize folder review",
+    });
+    expect(screen.getByText("~/Code/personal/dabn")).toBeTruthy();
+    expect(screen.getByText("Rust")).toBeTruthy();
+    expect(within(card).getByText("~/Code/personal/dabn/pocket")).toBeTruthy();
+
+    fireEvent.change(within(card).getByLabelText("Project name"), {
+      target: { value: "Dabn App" },
+    });
+    expect(
+      within(card).getByLabelText<HTMLInputElement>("Pocket ID").value,
+    ).toBe("dabn-app");
+
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("button", { name: "Pocketize" }));
+    });
+    expect(native).toHaveBeenCalledWith("create_development_project", {
+      parentPath: "~/Code/personal/dabn",
+      name: "Dabn App",
+      id: "dabn-app",
+      folderName: "pocket",
+    });
+    expect(onCreated).toHaveBeenCalledWith(
+      {
+        ...project,
+        developmentLinked: true,
+      },
+      {
+        folderPath: "~/Code/personal/dabn",
+        folderName: "dabn",
+        detectedStack: "Rust",
+        targetSubfolder: "pocket",
+      },
+    );
+  });
+
+  it("disables Pocketize when inspection reports blockers", async () => {
+    stubInvoke({
+      inspect_pocketize_folder: () => ({
+        folderName: "managed-dir",
+        folderPath: "~/Library/Application Support/dev.pockets.desktop",
+        alreadyPocket: false,
+        suggestedName: "Managed Dir",
+        suggestedId: "managed-dir",
+        suggestedSubfolder: "pocket",
+        detectedStack: null,
+        hasServerJs: false,
+        hasDockerfile: false,
+        hasContainerfile: false,
+        filesToAdd: [],
+        filesToUpdate: [],
+        existingFilesKept: [],
+        warnings: [],
+        blockers: [
+          "Choose an external project folder, outside Pockets' managed storage.",
+        ],
+      }),
+    });
+    renderForm();
+    fireEvent.click(screen.getByRole("tab", { name: "Local folder" }));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Choose local folder…" }),
+      );
+    });
+
+    const card = await screen.findByRole("form", {
+      name: "Pocketize folder review",
+    });
+    expect(within(card).getByRole("alert").textContent).toContain(
+      "managed storage",
+    );
+    expect(
+      within(card).getByRole<HTMLButtonElement>("button", {
+        name: "Pocketize",
+      }).disabled,
+    ).toBe(true);
   });
 
   it("explains invalid folder slugs inline while keeping submission disabled", () => {

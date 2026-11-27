@@ -55,6 +55,8 @@ struct CreateDevArgs {
     parent_path: String,
     name: String,
     folder_name: String,
+    #[serde(default)]
+    id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -70,6 +72,20 @@ struct LinkDevArgs {
     #[serde(default)]
     id: Option<String>,
     folder_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InspectPocketizeArgs {
+    folder_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PocketizeDevArgs {
+    folder_path: String,
+    name: String,
+    id: String,
 }
 
 #[derive(Deserialize)]
@@ -235,6 +251,7 @@ pub async fn dispatch(
                     fs_browser::expand_tilde(&args.parent_path),
                     args.name,
                     args.folder_name,
+                    args.id,
                 )
                 .await?,
             )
@@ -257,6 +274,28 @@ pub async fn dispatch(
                     ctx,
                     args.id,
                     fs_browser::expand_tilde(&args.folder_path),
+                )
+                .await?,
+            )
+        }
+        "inspect_pocketize_folder" => {
+            let args: InspectPocketizeArgs = parse_args(body)?;
+            to_json(
+                development_commands::inspect_pocketize_folder(
+                    ctx,
+                    fs_browser::expand_tilde(&args.folder_path),
+                )
+                .await?,
+            )
+        }
+        "pocketize_development_folder" => {
+            let args: PocketizeDevArgs = parse_args(body)?;
+            to_json(
+                development_commands::pocketize_development_folder(
+                    ctx,
+                    fs_browser::expand_tilde(&args.folder_path),
+                    args.name,
+                    args.id,
                 )
                 .await?,
             )

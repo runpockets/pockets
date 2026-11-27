@@ -12,10 +12,10 @@
 //!   `Containerfile`; the manifest is parsed and host-validated from the
 //!   exact captured bytes, and the Containerfile shown to the UI comes
 //!   from the same bytes the digest covers.
-//! - Any entry with a `.git`, `node_modules`, `data`, `dist` or `target`
-//!   component, hidden entries (except the root `.containerignore`,
-//!   `.dockerignore` and `.gitignore`), credential extensions (`.pem`,
-//!   `.key`, `.p12`, `.pfx`) and the names `credentials.json`, `id_rsa`
+//! - Any entry with a `.git`, `node_modules`, `venv`, `__pycache__`, `data`,
+//!   `dist` or `target` component, hidden entries (except the root
+//!   `.containerignore`, `.dockerignore` and `.gitignore`), credential extensions
+//!   (`.pem`, `.key`, `.p12`, `.pfx`) and the names `credentials.json`, `id_rsa`
 //!   and `id_ed25519` are excluded before traversal — never stat'ed,
 //!   opened or copied, so user-local data can never enter a snapshot.
 //! - Symlinks and special files are rejected, and on Unix included
@@ -88,7 +88,15 @@ const MAX_ROOT_CONFIG_BYTES: u64 = 128 * 1024;
 
 /// Directory or file components excluded (with everything under them)
 /// before traversal, at any depth.
-const EXCLUDED_COMPONENTS: [&str; 5] = [".git", "node_modules", "data", "dist", "target"];
+const EXCLUDED_COMPONENTS: [&str; 7] = [
+    ".git",
+    "node_modules",
+    "venv",
+    "__pycache__",
+    "data",
+    "dist",
+    "target",
+];
 /// Hidden entries stay out of snapshots, except these root ignore files.
 const ROOT_IGNORE_EXCEPTIONS: [&str; 3] = [".containerignore", ".dockerignore", ".gitignore"];
 /// Credential file names excluded at any depth.
@@ -734,11 +742,23 @@ pub(crate) fn source_signature(root: &Path) -> Result<String, String> {
                 *total = total
                     .checked_add(meta.len())
                     .ok_or("Source size overflow.")?;
-                if entries.len() >= MAX_FILES
-                    || meta.len() > MAX_FILE_BYTES
-                    || *total > MAX_TOTAL_BYTES
-                {
-                    return Err("Source exceeds preview capture limits.".into());
+                if entries.len() >= MAX_FILES {
+                    return Err(format!(
+                        "This folder holds more than {MAX_FILES} files (excluding .git, \
+                         node_modules, venv, __pycache__, dist, target, and data)."
+                    ));
+                }
+                if meta.len() > MAX_FILE_BYTES {
+                    return Err(format!(
+                        "{path} is larger than 5 MiB ({:.1} MiB). Move large files or binaries \
+                         out of source (or into data/).",
+                        meta.len() as f64 / (1024.0 * 1024.0)
+                    ));
+                }
+                if *total > MAX_TOTAL_BYTES {
+                    return Err(format!(
+                        "Total source size exceeds 50 MiB (reached at {path})."
+                    ));
                 }
                 entries.push((path, meta));
             } else {

@@ -23,6 +23,7 @@ pub mod local_sites;
 mod managed_live;
 pub mod manifest;
 pub mod pocket;
+pub mod pocketize;
 pub mod preview;
 pub mod preview_egress;
 pub mod preview_proxy;

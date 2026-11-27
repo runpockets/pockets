@@ -11,10 +11,13 @@ pub async fn create_development_project(
     parent: PathBuf,
     name: String,
     folder_name: String,
+    id: Option<String>,
 ) -> Result<Project, String> {
+    let manifest_id = id.unwrap_or_else(|| folder_name.clone());
+    crate::scaffold::inputs(&name, &manifest_id)?;
     crate::scaffold::inputs(&name, &folder_name)?;
     mutate(ctx, None, false, move |store| {
-        crate::scaffold::create(&store, &parent, &name, &folder_name)
+        crate::scaffold::create_with_id(&store, &parent, &name, &manifest_id, &folder_name)
     })
     .await
 }
@@ -158,6 +161,29 @@ pub async fn link_development_folder(
     let project_id = id.clone();
     mutate(ctx, project_id.as_deref(), true, move |store| {
         development::link(&store, id.as_deref(), &folder)
+    })
+    .await
+}
+
+pub async fn inspect_pocketize_folder(
+    ctx: &AppContext,
+    folder: PathBuf,
+) -> Result<crate::pocketize::PocketizeInspection, String> {
+    let store = ctx.store();
+    tokio::task::spawn_blocking(move || crate::pocketize::inspect(&store, &folder))
+        .await
+        .map_err(|_| "Inspecting the selected folder was interrupted.".to_owned())?
+}
+
+pub async fn pocketize_development_folder(
+    ctx: &AppContext,
+    folder: PathBuf,
+    name: String,
+    id: String,
+) -> Result<crate::pocketize::PocketizeResult, String> {
+    crate::scaffold::inputs(&name, &id)?;
+    mutate(ctx, None, false, move |store| {
+        crate::pocketize::pocketize(&store, &folder, &name, &id)
     })
     .await
 }

@@ -52,6 +52,62 @@
   min-width: 0;
 }
 
+.external-workspace-pocketize {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-16);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  min-width: 0;
+}
+
+.external-workspace-pocketize-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-10);
+}
+
+.external-workspace-pocketize-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.external-workspace-pocketize-dismiss {
+  flex: none;
+  margin: -4px -4px 0 0;
+}
+
+.external-workspace-pocketize-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.external-workspace-pocketize-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex: none;
+}
+
+.external-workspace-pocketize-prompt {
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  background: var(--chrome);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .external-workspace-install {
   min-width: 0;
 }

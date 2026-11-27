@@ -8,8 +8,69 @@ import type { PreviewApiAccess } from "./useProjectPreview";
 import type { PreviewApi } from "./CreationPanel";
 import { TitleBar } from "./TitleBar";
 import { IconButton } from "./Status";
-import { IconPanelLeft, IconPanelRight } from "./Icons";
+import {
+  IconCheck,
+  IconClose,
+  IconCopy,
+  IconPanelLeft,
+  IconPanelRight,
+} from "./Icons";
 import "./ExternalWorkspace.css";
+
+export const PLACEHOLDER_CONTAINERFILE_MARKER =
+  "# POCKETS-PLACEHOLDER-CONTAINERFILE";
+
+export interface PocketizeSourceInfo {
+  folderPath: string;
+  folderName: string;
+  detectedStack?: string | null;
+  /** Non-null when the new Pocket folder was created inside the source repo (e.g. `"pocket"`). */
+  targetSubfolder?: string | null;
+}
+
+export function buildCleanRoomPocketizePrompt(
+  projectName: string,
+  source: PocketizeSourceInfo,
+): string {
+  const stackClause = source.detectedStack ? ` (${source.detectedStack})` : "";
+  if (source.targetSubfolder) {
+    const sub = source.targetSubfolder;
+    return `Read ${sub}/AGENTS.md and ${sub}/POCKETS.md, then recreate ${projectName}${stackClause} inside ${sub}/ using the existing project in this folder as reference. Keep metadata.id in ${sub}/pocket.yaml unchanged, persist app state under DATA_DIR (/data), declare any required environment variables under runtimeVariables in ${sub}/pocket.yaml, declare any external read-only HTTPS hosts under previewApis, and record a one-line summary in ${sub}/POCKETS_CHANGES.md when done.`;
+  }
+  return `Read AGENTS.md and POCKETS.md, then recreate the ${projectName} app from ${source.folderPath}${stackClause} inside this Pocket. Keep metadata.id in pocket.yaml unchanged, persist app state under DATA_DIR (/data), declare any required environment variables under runtimeVariables in pocket.yaml, declare any external read-only HTTPS hosts under previewApis, and record a one-line summary in POCKETS_CHANGES.md when done.`;
+}
+
+function detectStackFromFiles(files?: string[]): string | null {
+  if (!files) return null;
+  const set = new Set(files);
+  if (set.has("package.json")) return "Node.js";
+  if (
+    set.has("pyproject.toml") ||
+    set.has("requirements.txt") ||
+    set.has("Pipfile")
+  )
+    return "Python";
+  if (set.has("go.mod")) return "Go";
+  if (set.has("Cargo.toml")) return "Rust";
+  if (set.has("Gemfile")) return "Ruby";
+  if (set.has("composer.json")) return "PHP";
+  if (set.has("Dockerfile")) return "Docker";
+  if (set.has("index.html")) return "Static Web";
+  return null;
+}
+
+export function buildPocketizePrompt(
+  projectName: string,
+  files?: string[],
+): string {
+  const stack = detectStackFromFiles(files);
+  const stackClause = stack ? ` (${stack})` : "";
+  const hasDockerfile = files?.includes("Dockerfile") === true;
+  const containerStep = hasDockerfile
+    ? "replace the placeholder Containerfile by adapting the existing Dockerfile into a non-root container with a writable /data directory (removing the # POCKETS-PLACEHOLDER-CONTAINERFILE header)"
+    : "replace the placeholder Containerfile with a clean non-root container for this app and a writable /data directory (removing the # POCKETS-PLACEHOLDER-CONTAINERFILE header)";
+  return `Read POCKETS.md and adapt this existing ${projectName}${stackClause} project to run as a Pocket: ensure the HTTP server binds 0.0.0.0 on PORT (matching web.port in pocket.yaml), serves GET /health returning 200, persists app state under DATA_DIR (/data), declares any required environment variables under runtimeVariables in pocket.yaml, and ${containerStep}. Keep metadata.id in pocket.yaml unchanged and record a one-line summary in POCKETS_CHANGES.md when done.`;
+}
 
 function ProjectTitleFavicon({
   projectId,
@@ -60,6 +121,10 @@ export default function ExternalWorkspace({
   projectName,
   faviconCacheKey,
   linked,
+  containerfile,
+  projectFiles,
+  pocketizeSource,
+  onDismissPocketizeSource,
   previewApiAccess,
   previewApis,
   building,
@@ -74,6 +139,10 @@ export default function ExternalWorkspace({
   projectName: string;
   faviconCacheKey?: string;
   linked: boolean;
+  containerfile?: string;
+  projectFiles?: string[];
+  pocketizeSource?: PocketizeSourceInfo;
+  onDismissPocketizeSource?: () => void;
   previewApiAccess: PreviewApiAccess;
   previewApis?: PreviewApi[];
   building: boolean;
@@ -87,6 +156,52 @@ export default function ExternalWorkspace({
   const [logs, setLogs] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
+  const [promptCopyError, setPromptCopyError] = useState<string | null>(null);
+  const promptCopyTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    setPromptCopied(false);
+    setPromptCopyError(null);
+    return () => {
+      if (promptCopyTimer.current !== null) {
+        window.clearTimeout(promptCopyTimer.current);
+        promptCopyTimer.current = null;
+      }
+    };
+  }, [projectId]);
+
+  const isCleanRoomPocketize = Boolean(pocketizeSource);
+  const isInPlacePlaceholder =
+    !isCleanRoomPocketize &&
+    linked &&
+    typeof containerfile === "string" &&
+    containerfile.includes(PLACEHOLDER_CONTAINERFILE_MARKER);
+  const pocketizePrompt = pocketizeSource
+    ? buildCleanRoomPocketizePrompt(projectName, pocketizeSource)
+    : isInPlacePlaceholder
+      ? buildPocketizePrompt(projectName, projectFiles)
+      : null;
+
+  async function copyPocketizePrompt() {
+    if (!pocketizePrompt) return;
+    setPromptCopyError(null);
+    try {
+      await navigator.clipboard.writeText(pocketizePrompt);
+      setPromptCopied(true);
+      if (promptCopyTimer.current !== null) {
+        window.clearTimeout(promptCopyTimer.current);
+      }
+      promptCopyTimer.current = window.setTimeout(() => {
+        promptCopyTimer.current = null;
+        setPromptCopied(false);
+      }, 2000);
+    } catch {
+      setPromptCopyError(
+        "Could not access clipboard automatically — select and copy the prompt above.",
+      );
+    }
+  }
   async function readLogs() {
     setLoadingLogs(true);
     setLogError(null);
@@ -133,6 +248,90 @@ export default function ExternalWorkspace({
         }
       />
       <div className="external-workspace-content">
+        {pocketizePrompt && (
+          <section
+            className="external-workspace-pocketize"
+            aria-label="Finish pocketizing"
+          >
+            <div className="external-workspace-pocketize-header">
+              <h2 className="external-workspace-pocketize-title">
+                Finish pocketizing in your coding tool
+              </h2>
+              {isCleanRoomPocketize && onDismissPocketizeSource && (
+                <IconButton
+                  label="Dismiss pocketize prompt"
+                  className="external-workspace-pocketize-dismiss"
+                  onClick={onDismissPocketizeSource}
+                >
+                  <IconClose size={14} />
+                </IconButton>
+              )}
+            </div>
+            {pocketizeSource ? (
+              pocketizeSource.targetSubfolder ? (
+                <p className="hint">
+                  Keep <code>{pocketizeSource.folderName}</code> open in your
+                  coding tool and paste this prompt to build the Pocket inside{" "}
+                  <code>{pocketizeSource.targetSubfolder}/</code> without
+                  touching your existing files.
+                </p>
+              ) : (
+                <p className="hint">
+                  Open this new Pocket folder in your coding tool and paste this
+                  prompt so it recreates{" "}
+                  <code>{pocketizeSource.folderName}</code> here without
+                  touching the original project.
+                </p>
+              )
+            ) : (
+              <p className="hint">
+                Paste this prompt into your coding tool so it wires up{" "}
+                <code>/health</code>, <code>/data</code>, and{" "}
+                <code>Containerfile</code> for your stack.
+              </p>
+            )}
+            <pre className="external-workspace-pocketize-prompt">
+              {pocketizePrompt}
+            </pre>
+            <div className="external-workspace-pocketize-actions">
+              <button
+                type="button"
+                className="button-primary external-workspace-pocketize-copy"
+                onClick={() => void copyPocketizePrompt()}
+              >
+                {promptCopied ? (
+                  <>
+                    <IconCheck size={14} />
+                    Copied prompt
+                  </>
+                ) : (
+                  <>
+                    <IconCopy size={14} />
+                    Copy AI prompt
+                  </>
+                )}
+              </button>
+            </div>
+            {promptCopyError && (
+              <p role="alert" className="error">
+                {promptCopyError}
+              </p>
+            )}
+            {pocketizeSource ? (
+              <p className="hint">
+                Start <strong>Preview</strong> to watch live edits as your
+                coding tool builds it, then click{" "}
+                <strong>Build &amp; start</strong> when ready.
+              </p>
+            ) : (
+              <p className="hint">
+                Once finished, click <strong>Build &amp; start</strong> below.
+                Live Preview is for dependency-free root <code>server.js</code>{" "}
+                apps.
+              </p>
+            )}
+          </section>
+        )}
         <div className="external-workspace-section">
           <h2>Develop in your coding tool</h2>
           <DevelopmentPanel

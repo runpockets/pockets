@@ -100,6 +100,43 @@ describe("api RPC bridge", () => {
     );
   });
 
+  it("requests a folder via the registered picker before inspecting a folder for pocketize", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: { folderPath: "~/Code/budget", alreadyPocket: false },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = vi.fn().mockResolvedValue("~/Code/budget");
+    registerFolderPicker(picker);
+
+    const info = await invoke<{ folderPath: string; alreadyPocket: boolean }>(
+      "inspect_pocketize_folder",
+      {},
+    );
+    expect(info).toEqual({
+      folderPath: "~/Code/budget",
+      alreadyPocket: false,
+    });
+    expect(picker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Choose project folder",
+        confirmLabel: "Choose folder",
+        preferPocketFolder: true,
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/rpc/inspect_pocketize_folder",
+      expect.objectContaining({
+        body: JSON.stringify({ folderPath: "~/Code/budget" }),
+      }),
+    );
+  });
+
   it("returns null without hitting the daemon when folder picking is cancelled", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

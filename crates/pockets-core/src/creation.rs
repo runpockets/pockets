@@ -207,6 +207,7 @@ pub async fn build_project(ctx: &AppContext, id: String) -> Result<projects::Pro
             .map_err(|_| blocking_failed("syncing your Pocket's source"))??
     };
     project.manifest.validate_host()?;
+    crate::pocketize::ensure_containerfile_adapted(&project.containerfile)?;
     let bin = crate::require_podman()?;
     let updating = project.installed.is_some();
     if updating {
@@ -301,6 +302,7 @@ pub(crate) async fn build_approved_project(
             .await
             .map_err(|_| blocking_failed("loading the project record"))??;
         guard_buildable(&loaded)?;
+        crate::pocketize::ensure_containerfile_adapted(&loaded.containerfile)?;
     }
 
     // Stage and build the working snapshot privately: the candidate

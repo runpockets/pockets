@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import ExternalWorkspace from "./ExternalWorkspace";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import ExternalWorkspace, {
+  PLACEHOLDER_CONTAINERFILE_MARKER,
+} from "./ExternalWorkspace";
 import type { PreviewApiAccess } from "./useProjectPreview";
 
 vi.mock("./DevelopmentPanel", () => ({
@@ -159,5 +167,164 @@ describe("ExternalWorkspace manage header favicon", () => {
         );
       }
     }
+  });
+});
+
+describe("ExternalWorkspace pocketize handoff card", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("shows a copyable AI handoff prompt when a linked project has a placeholder Containerfile", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <ExternalWorkspace
+        projectId="proj-123"
+        projectName="Budget Tracker"
+        linked
+        containerfile={`${PLACEHOLDER_CONTAINERFILE_MARKER}\nFROM node:24-alpine\n`}
+        projectFiles={["requirements.txt", "Dockerfile", "pocket.yaml"]}
+        previewApiAccess={idleApiAccess}
+        building={false}
+        sidebarCollapsed={false}
+        previewCollapsed={false}
+        onToggleSidebar={vi.fn()}
+        onTogglePreview={vi.fn()}
+        onSourceChanged={vi.fn()}
+        controlsRef={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: "Finish pocketizing" });
+    expect(card.textContent).toContain("Budget Tracker (Python)");
+    expect(card.textContent).toContain("adapting the existing Dockerfile");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy AI prompt" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("Read POCKETS.md"),
+    );
+    expect(screen.getByText("Copied prompt")).toBeTruthy();
+  });
+
+  it("shows a dismissible clean-room recreation prompt when pocketized from an existing folder", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const onDismiss = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <ExternalWorkspace
+        projectId="proj-123"
+        projectName="Dabn"
+        linked
+        pocketizeSource={{
+          folderPath: "~/Code/personal/dabn",
+          folderName: "dabn",
+          detectedStack: "Rust",
+        }}
+        onDismissPocketizeSource={onDismiss}
+        previewApiAccess={idleApiAccess}
+        building={false}
+        sidebarCollapsed={false}
+        previewCollapsed={false}
+        onToggleSidebar={vi.fn()}
+        onTogglePreview={vi.fn()}
+        onSourceChanged={vi.fn()}
+        controlsRef={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: "Finish pocketizing" });
+    expect(card.textContent).toContain("~/Code/personal/dabn (Rust)");
+    expect(card.textContent).toContain("without touching the original project");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy AI prompt" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "recreate the Dabn app from ~/Code/personal/dabn",
+      ),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss pocketize prompt" }),
+    );
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("tailors the recreation prompt when the pocket folder lives inside the selected project", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <ExternalWorkspace
+        projectId="proj-123"
+        projectName="Dabn"
+        linked
+        pocketizeSource={{
+          folderPath: "~/Code/personal/dabn",
+          folderName: "dabn",
+          detectedStack: "Rust",
+          targetSubfolder: "pocket",
+        }}
+        previewApiAccess={idleApiAccess}
+        building={false}
+        sidebarCollapsed={false}
+        previewCollapsed={false}
+        onToggleSidebar={vi.fn()}
+        onTogglePreview={vi.fn()}
+        onSourceChanged={vi.fn()}
+        controlsRef={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: "Finish pocketizing" });
+    expect(card.textContent).toContain("pocket/AGENTS.md");
+    expect(card.textContent).toContain("without touching your existing files");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy AI prompt" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("recreate Dabn (Rust) inside pocket/"),
+    );
+  });
+
+  it("hides the handoff card once Containerfile has been adapted", () => {
+    render(
+      <ExternalWorkspace
+        projectId="proj-123"
+        projectName="Budget Tracker"
+        linked
+        containerfile="FROM python:3.12-slim\nUSER app\n"
+        projectFiles={["requirements.txt", "pocket.yaml", "Containerfile"]}
+        previewApiAccess={idleApiAccess}
+        building={false}
+        sidebarCollapsed={false}
+        previewCollapsed={false}
+        onToggleSidebar={vi.fn()}
+        onTogglePreview={vi.fn()}
+        onSourceChanged={vi.fn()}
+        controlsRef={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("region", { name: "Finish pocketizing" }),
+    ).toBeNull();
   });
 });

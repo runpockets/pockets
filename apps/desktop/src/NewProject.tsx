@@ -6,9 +6,15 @@ import type {
   ProjectManifest,
   RuntimeVariable,
 } from "./CreationPanel";
+import type { PocketizeSourceInfo } from "./ExternalWorkspace";
 import { TitleBar } from "./TitleBar";
 import { IconButton, StatusPip } from "./Status";
-import { IconCheck, IconPanelLeft, IconPanelRight } from "./Icons";
+import {
+  IconCheck,
+  IconFolderOpen,
+  IconPanelLeft,
+  IconPanelRight,
+} from "./Icons";
 import { formatVersionTag } from "./formatVersion";
 import "./NewProject.css";
 
@@ -48,6 +54,43 @@ export interface GitHubPocketPreview {
   hostSupported: boolean;
   hostError?: string | null;
   existingProjectId?: string | null;
+}
+
+export interface PocketizeInspection {
+  folderName: string;
+  folderPath: string;
+  alreadyPocket: boolean;
+  existingName?: string | null;
+  existingId?: string | null;
+  suggestedName: string;
+  suggestedId: string;
+  suggestedSubfolder: string;
+  detectedStack?: string | null;
+  hasServerJs: boolean;
+  hasDockerfile: boolean;
+  hasContainerfile: boolean;
+  filesToAdd: string[];
+  filesToUpdate: string[];
+  existingFilesKept: string[];
+  warnings: string[];
+  blockers: string[];
+}
+
+function joinPathForDisplay(parent: string, child: string): string {
+  const sep = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
+  const trimmed = parent.endsWith(sep) ? parent.slice(0, -1) : parent;
+  return `${trimmed}${sep}${child}`;
+}
+
+function slugFromName(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 63)
+    .replace(/-$/, "");
 }
 
 function safeExternalUrl(url?: string | null): string | null {
@@ -248,7 +291,7 @@ export default function NewProject({
   previewCollapsed: boolean;
   onToggleSidebar: () => void;
   onTogglePreview: () => void;
-  onCreated: (project: Project) => void;
+  onCreated: (project: Project, pocketizeSource?: PocketizeSourceInfo) => void;
   onSelectProject?: (id: string) => void;
 }) {
   const [name, setName] = useState("");
@@ -268,11 +311,22 @@ export default function NewProject({
   );
   const [inspectError, setInspectError] = useState<string | null>(null);
 
+  const [pocketizePlan, setPocketizePlan] =
+    useState<PocketizeInspection | null>(null);
+  const [pocketizeName, setPocketizeName] = useState("");
+  const [pocketizeId, setPocketizeId] = useState("");
+  const [pocketizeCustomId, setPocketizeCustomId] = useState(false);
+  const [pocketizeCustomParent, setPocketizeCustomParent] = useState<
+    string | null
+  >(null);
+  const [pocketizeError, setPocketizeError] = useState<string | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [pullingRepo, setPullingRepo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const folderErrorId = useId();
+  const pocketizeIdErrorId = useId();
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -331,6 +385,116 @@ export default function NewProject({
     }
   }
 
+  async function chooseLocalFolder() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    setPocketizeError(null);
+    try {
+      const inspection = await invoke<PocketizeInspection | null>(
+        "inspect_pocketize_folder",
+        {},
+      );
+      if (inspection === null) return;
+      if (mounted.current) {
+        setPocketizePlan(inspection);
+        setPocketizeName(inspection.suggestedName);
+        setPocketizeId(inspection.suggestedId);
+        setPocketizeCustomId(false);
+        setPocketizeCustomParent(null);
+      }
+    } catch (failure) {
+      if (mounted.current) setPocketizeError(String(failure));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function submitLinkFolder() {
+    if (inFlight.current || pocketizePlan === null) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    setPocketizeError(null);
+    try {
+      const project = await invoke<Project | null>("link_development_folder", {
+        folderPath: pocketizePlan.folderPath,
+      });
+      if (project !== null) {
+        onCreated({ ...project, developmentLinked: true });
+      }
+    } catch (failure) {
+      if (mounted.current) setPocketizeError(String(failure));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function choosePocketizeLocation() {
+    if (inFlight.current || pocketizePlan === null) return;
+    inFlight.current = true;
+    setBusy(true);
+    setPocketizeError(null);
+    try {
+      const picked = await invoke<string | null>("pick_parent_folder", {
+        folderName: pocketizeId || pocketizePlan.suggestedId,
+      });
+      if (picked !== null && mounted.current) {
+        setPocketizeCustomParent(
+          picked === pocketizePlan.folderPath ? null : picked,
+        );
+      }
+    } catch (failure) {
+      if (mounted.current) setPocketizeError(String(failure));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function submitPocketize() {
+    if (inFlight.current || pocketizePlan === null) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    setPocketizeError(null);
+    const insideSource = pocketizeCustomParent === null;
+    const parentPath = pocketizeCustomParent ?? pocketizePlan.folderPath;
+    const targetFolderName = insideSource
+      ? pocketizePlan.suggestedSubfolder || "pocket"
+      : pocketizeId;
+    try {
+      const created = await invoke<Project | null>(
+        "create_development_project",
+        {
+          parentPath,
+          name: pocketizeName.trim(),
+          id: pocketizeId,
+          folderName: targetFolderName,
+        },
+      );
+      if (created !== null) {
+        onCreated(
+          { ...created, developmentLinked: true },
+          {
+            folderPath: pocketizePlan.folderPath,
+            folderName: pocketizePlan.folderName,
+            detectedStack: pocketizePlan.detectedStack ?? null,
+            targetSubfolder: insideSource ? targetFolderName : null,
+          },
+        );
+      }
+    } catch (failure) {
+      if (mounted.current) setPocketizeError(String(failure));
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
   async function inspectGitHubRepo() {
     const trimmed = githubSource.trim();
     if (inFlight.current || inspecting || trimmed === "") return;
@@ -379,6 +543,21 @@ export default function NewProject({
     !folderValid && (folder.length > 0 || customFolder || name.trim() !== "");
   const showFolderInput = editingFolder || showFolderError;
   const createValid = name.trim() !== "" && name.length <= 80 && folderValid;
+
+  const pocketizeIdValid =
+    FOLDER_RE.test(pocketizeId) && pocketizeId.length <= 63;
+  const showPocketizeIdError =
+    pocketizePlan !== null &&
+    !pocketizeIdValid &&
+    (pocketizeId.length > 0 ||
+      pocketizeCustomId ||
+      pocketizeName.trim() !== "");
+  const pocketizeValid =
+    pocketizePlan !== null &&
+    pocketizePlan.blockers.length === 0 &&
+    pocketizeName.trim() !== "" &&
+    pocketizeName.length <= 80 &&
+    pocketizeIdValid;
 
   return (
     <div className="new-project">
@@ -444,17 +623,7 @@ export default function NewProject({
                     onChange={(event) => {
                       const value = event.target.value;
                       setName(value);
-                      if (!customFolder)
-                        setFolder(
-                          value
-                            .normalize("NFKD")
-                            .replace(/[\u0300-\u036f]/g, "")
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]+/g, "-")
-                            .replace(/^-|-$/g, "")
-                            .slice(0, 63)
-                            .replace(/-$/, ""),
-                        );
+                      if (!customFolder) setFolder(slugFromName(value));
                     }}
                     placeholder="Habit tracker"
                   />
@@ -785,19 +954,260 @@ export default function NewProject({
                 aria-labelledby="new-project-tab-folder"
                 className="new-project-tabpanel"
               >
-                <p className="hint">
-                  Link an existing Pocket folder for live preview and
-                  installation. Linking runs no code.
-                </p>
-                <div className="new-project-folder-actions">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void submitCreateOrLink(true)}
-                  >
-                    Link existing project
-                  </button>
-                </div>
+                {pocketizeError && (
+                  <p role="alert" className="error">
+                    {pocketizeError}
+                  </p>
+                )}
+                {pocketizePlan === null ? (
+                  <div className="new-project-folder-actions">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void chooseLocalFolder()}
+                    >
+                      {busy ? "Checking folder…" : "Choose local folder…"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="new-project-local-flow">
+                    <div className="new-project-folder-picked">
+                      <IconFolderOpen
+                        size={15}
+                        className="new-project-folder-picked-icon"
+                      />
+                      <div className="new-project-folder-picked-meta">
+                        <div className="new-project-folder-picked-title">
+                          <strong className="new-project-folder-picked-name">
+                            {pocketizePlan.folderName}
+                          </strong>
+                          {pocketizePlan.detectedStack && (
+                            <span className="new-project-folder-picked-stack">
+                              {pocketizePlan.detectedStack}
+                            </span>
+                          )}
+                        </div>
+                        <span className="new-project-folder-picked-path">
+                          {pocketizePlan.folderPath}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="new-project-link-button"
+                        disabled={busy}
+                        onClick={() => void chooseLocalFolder()}
+                      >
+                        Change folder
+                      </button>
+                    </div>
+
+                    {pocketizePlan.alreadyPocket ? (
+                      <div
+                        className="new-project-pocketize-body"
+                        role="region"
+                        aria-label="Existing Pocket folder"
+                      >
+                        <div className="new-project-already-pocket-status">
+                          <StatusPip
+                            tone={
+                              pocketizePlan.blockers.length === 0
+                                ? "ok"
+                                : "warn"
+                            }
+                            word="Already a Pocket"
+                          />
+                          {pocketizePlan.existingName && (
+                            <>
+                              <span
+                                className="new-project-folder-sep"
+                                aria-hidden="true"
+                              >
+                                ·
+                              </span>
+                              <span>{pocketizePlan.existingName}</span>
+                            </>
+                          )}
+                          {pocketizePlan.existingId && (
+                            <>
+                              <span
+                                className="new-project-folder-sep"
+                                aria-hidden="true"
+                              >
+                                ·
+                              </span>
+                              <code>{pocketizePlan.existingId}</code>
+                            </>
+                          )}
+                        </div>
+                        <p className="new-project-already-pocket-note">
+                          Pockets links the folder where it is. Your coding tool
+                          keeps working in it, and nothing is added or run.
+                        </p>
+                        {pocketizePlan.blockers.map((blocker) => (
+                          <p key={blocker} role="alert" className="error">
+                            {blocker}
+                          </p>
+                        ))}
+                        <div className="new-project-pocketize-footer">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setPocketizePlan(null);
+                              setPocketizeError(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="button-primary"
+                            disabled={busy || pocketizePlan.blockers.length > 0}
+                            onClick={() => void submitLinkFolder()}
+                          >
+                            {busy ? "Linking…" : "Link folder"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <form
+                        className="new-project-pocketize-body"
+                        aria-label="Pocketize folder review"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          if (pocketizeValid) void submitPocketize();
+                        }}
+                      >
+                        <div className="new-project-pocketize-fields">
+                          <label className="new-project-field">
+                            <span className="new-project-field-label">
+                              Project name
+                            </span>
+                            <input
+                              type="text"
+                              value={pocketizeName}
+                              maxLength={80}
+                              disabled={busy}
+                              onChange={(event) => {
+                                const nextName = event.target.value;
+                                setPocketizeName(nextName);
+                                if (!pocketizeCustomId) {
+                                  setPocketizeId(slugFromName(nextName));
+                                }
+                              }}
+                            />
+                          </label>
+                          <div className="new-project-field-group">
+                            <label className="new-project-field">
+                              <span className="new-project-field-label">
+                                Pocket ID
+                              </span>
+                              <input
+                                type="text"
+                                value={pocketizeId}
+                                maxLength={63}
+                                disabled={busy}
+                                aria-invalid={showPocketizeIdError}
+                                aria-describedby={
+                                  showPocketizeIdError
+                                    ? pocketizeIdErrorId
+                                    : undefined
+                                }
+                                onChange={(event) => {
+                                  setPocketizeCustomId(true);
+                                  setPocketizeId(event.target.value);
+                                }}
+                              />
+                            </label>
+                            {showPocketizeIdError ? (
+                              <p id={pocketizeIdErrorId} className="error">
+                                Use lowercase letters, numbers, and single
+                                hyphens (for example, my-project).
+                              </p>
+                            ) : (
+                              <span className="new-project-field-note">
+                                Used in its address, so pick one you’ll keep.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="new-project-pocketize-destination">
+                          <span className="new-project-folder-prefix">
+                            Creates
+                          </span>
+                          <code className="new-project-folder-value">
+                            {joinPathForDisplay(
+                              pocketizeCustomParent ?? pocketizePlan.folderPath,
+                              pocketizeCustomParent === null
+                                ? pocketizePlan.suggestedSubfolder || "pocket"
+                                : pocketizeId || pocketizePlan.suggestedId,
+                            )}
+                          </code>
+                          <span
+                            className="new-project-folder-sep"
+                            aria-hidden="true"
+                          >
+                            ·
+                          </span>
+                          <button
+                            type="button"
+                            className="new-project-link-button"
+                            disabled={busy}
+                            onClick={() => void choosePocketizeLocation()}
+                          >
+                            Change location
+                          </button>
+                          {pocketizeCustomParent !== null && (
+                            <>
+                              <span
+                                className="new-project-folder-sep"
+                                aria-hidden="true"
+                              >
+                                ·
+                              </span>
+                              <button
+                                type="button"
+                                className="new-project-link-button"
+                                disabled={busy}
+                                onClick={() => setPocketizeCustomParent(null)}
+                              >
+                                Inside {pocketizePlan.folderName}
+                              </button>
+                            </>
+                          )}
+                        </div>
+
+                        {pocketizePlan.blockers.map((blocker) => (
+                          <p key={blocker} role="alert" className="error">
+                            {blocker}
+                          </p>
+                        ))}
+
+                        <div className="new-project-pocketize-footer">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setPocketizePlan(null);
+                              setPocketizeCustomParent(null);
+                              setPocketizeError(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="button-primary"
+                            disabled={busy || !pocketizeValid}
+                          >
+                            {busy ? "Pocketizing…" : "Pocketize"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>

@@ -11,6 +11,13 @@ use crate::projects::{Project, Store};
 
 include!(concat!(env!("OUT_DIR"), "/basic_pocket.rs"));
 
+pub(crate) fn template_file(path: &str) -> Option<&'static str> {
+    TEMPLATE_FILES
+        .iter()
+        .find(|(candidate, _)| *candidate == path)
+        .map(|(_, contents)| *contents)
+}
+
 pub(crate) fn inputs(name: &str, slug: &str) -> Result<(), String> {
     if name.trim().is_empty()
         || name.chars().count() > 80
@@ -66,17 +73,33 @@ pub(crate) fn render(name: &str, slug: &str) -> Result<BTreeMap<String, String>,
 
 /// Create source and register a linked draft. Failure after directory creation
 /// leaves the user's new source in place with explicit recovery instructions.
+#[cfg(test)]
 pub(crate) fn create(
     store: &Store,
     selected_parent: &Path,
     name: &str,
     slug: &str,
 ) -> Result<Project, String> {
-    let files = render(name, slug)?;
+    create_with_id(store, selected_parent, name, slug, slug)
+}
+
+/// Create source in `selected_parent/<folder_name>` using `id` as the Pocket's
+/// manifest ID (`metadata.id` and image tag). Allows creating a clean `pocket/`
+/// subfolder inside an existing project while keeping the project's own ID.
+pub(crate) fn create_with_id(
+    store: &Store,
+    selected_parent: &Path,
+    name: &str,
+    id: &str,
+    folder_name: &str,
+) -> Result<Project, String> {
+    inputs(name, id)?;
+    inputs(name, folder_name)?;
+    let files = render(name, id)?;
     let destination = write_new_folder(
         store,
         selected_parent,
-        slug,
+        folder_name,
         files
             .iter()
             .map(|(path, text)| (path.as_str(), text.as_bytes())),
@@ -251,5 +274,21 @@ mod tests {
             std::fs::read_to_string(invalid_store).unwrap(),
             "keep existing file"
         );
+    }
+
+    #[test]
+    fn creates_pocket_in_distinct_subfolder_while_preserving_manifest_id() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("dabn");
+        std::fs::create_dir(&repo).unwrap();
+        let store = Store::new(temp.path().join("app-data/projects"));
+
+        let project = create_with_id(&store, &repo, "Dabn", "dabn", "pocket").unwrap();
+        assert_eq!(project.manifest.metadata.id, "dabn");
+        assert_eq!(project.manifest.metadata.name, "Dabn");
+        let linked = crate::development::folder(&store, &project.id).unwrap();
+        assert!(linked.ends_with("dabn/pocket"));
+        assert!(linked.join("pocket.yaml").is_file());
+        assert!(linked.join("server.js").is_file());
     }
 }
