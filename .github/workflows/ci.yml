@@ -19,6 +19,7 @@ jobs:
       - run: npm run test:desktop
       - run: npm run test:gateway
       - run: npm run test:schema
+      - run: npm run test:starter
       - run: npm test --prefix packages/pocket-tools
       - run: npm run build:web
 

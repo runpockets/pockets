@@ -3,3 +3,12 @@ node_modules/
 
 # Local DATA_DIR for development
 data/
+
+# Local environment files and credentials (never commit or publish)
+.env
+.env.*
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx

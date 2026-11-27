@@ -77,13 +77,16 @@ test("create renders a valid project into a parent directory whose name contains
     "localhost/pockets-my-new-pocket:local",
   );
 
-  // Dotfiles are copied with the reviewed template's content.
+  // Dotfiles are copied with the reviewed template's content and exclude secrets.
   for (const dotfile of [".gitignore", ".containerignore"]) {
+    const content = await readFile(path.join(dest, dotfile), "utf8");
     assert.equal(
-      await readFile(path.join(dest, dotfile), "utf8"),
+      content,
       await readFile(path.join(templateDir, dotfile), "utf8"),
       `${dotfile} content`,
     );
+    assert.match(content, /^\.env$/m, `${dotfile} ignores .env`);
+    assert.match(content, /^\*\.pem$/m, `${dotfile} ignores *.pem`);
   }
 
   // Title Case display name reached the rendered text files.
@@ -104,6 +107,12 @@ test("create renders a valid project into a parent directory whose name contains
   );
   assert.match(runtimeInstructions, /lib\/cache\.js/);
   assert.match(runtimeInstructions, /stale-while-revalidate/);
+  assert.match(runtimeInstructions, /fetchApi/);
+  assert.match(runtimeInstructions, /read-only/i);
+
+  const manifestText = await readFile(manifestPath, "utf8");
+  assert.match(manifestText, /# previewApis:/);
+  assert.match(manifestText, /# runtimeVariables:/);
 
   const containerfile = await readFile(
     path.join(dest, "Containerfile"),
@@ -127,6 +136,28 @@ test("create renders a valid project into a parent directory whose name contains
       `unresolved token in ${relative}`,
     );
   }
+
+  // The generated starter passes Node syntax check and its own test suite.
+  const syntaxCheck = spawnSync(process.execPath, ["--check", "server.js"], {
+    cwd: dest,
+    encoding: "utf8",
+  });
+  assert.equal(syntaxCheck.status, 0, `stderr: ${syntaxCheck.stderr}`);
+
+  const childEnv = { ...process.env };
+  delete childEnv.NODE_TEST_CONTEXT;
+  const starterTests = spawnSync(process.execPath, ["--test"], {
+    cwd: dest,
+    env: childEnv,
+    encoding: "utf8",
+  });
+  assert.equal(
+    starterTests.status,
+    0,
+    `stdout: ${starterTests.stdout}\nstderr: ${starterTests.stderr}`,
+  );
+  assert.match(starterTests.stdout, /tests [1-9]/);
+  assert.match(starterTests.stdout, /fail 0/);
 });
 
 test("create refuses an existing destination and leaves it unchanged", async (t) => {

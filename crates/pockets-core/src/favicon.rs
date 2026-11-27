@@ -14,11 +14,14 @@
 //! Returns `None` when no valid image logo exists so the UI falls back to a
 //! clean single-letter browser-tab monogram.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 
+use crate::github_install::{http_client, parse_github_repo, GitHubRepo};
 use crate::{development, local_sites, AppContext, APP_VERSION};
 
 const MAX_FAVICON_BYTES: usize = 256 * 1024;
@@ -26,6 +29,23 @@ const MAX_HTML_SCAN_BYTES: usize = 512 * 1024;
 const MAX_WALK_DEPTH: usize = 4;
 const MAX_SCANNED_TEXT_FILES: usize = 40;
 const LIVE_PROBE_TIMEOUT: Duration = Duration::from_millis(1500);
+const REMOTE_FAVICON_TIMEOUT: Duration = Duration::from_secs(5);
+const REMOTE_FAVICON_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+const MAX_REMOTE_FAVICON_CACHE_ENTRIES: usize = 64;
+const RAW_GITHUB_BASE: &str = "https://raw.githubusercontent.com";
+
+const REMOTE_STATIC_FAVICON_PATHS: &[&str] = &[
+    "public/favicon.svg",
+    "favicon.svg",
+    "public/favicon.png",
+    "favicon.png",
+    "public/favicon.ico",
+    "favicon.ico",
+    "static/favicon.svg",
+    "web/favicon.svg",
+    "src/favicon.svg",
+    "client/public/favicon.svg",
+];
 
 const EXCLUDED_DIRS: &[&str] = &[".git", "node_modules", "data", "target", ".next"];
 
@@ -593,6 +613,178 @@ pub async fn resolve_project_favicon(ctx: &AppContext, id: &str) -> Option<Favic
     None
 }
 
+struct CachedRemoteFavicon {
+    fetched_at: Instant,
+    asset: Option<FaviconAsset>,
+}
+
+static REMOTE_FAVICON_CACHE: OnceLock<tokio::sync::Mutex<HashMap<String, CachedRemoteFavicon>>> =
+    OnceLock::new();
+
+fn remote_favicon_cache() -> &'static tokio::sync::Mutex<HashMap<String, CachedRemoteFavicon>> {
+    REMOTE_FAVICON_CACHE.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+}
+
+async fn fetch_remote_image(
+    client: &reqwest::Client,
+    url: &str,
+    path_hint: &str,
+) -> Option<FaviconAsset> {
+    let response = client.get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    if let Some(len) = response.content_length() {
+        if len as usize > MAX_FAVICON_BYTES {
+            return None;
+        }
+    }
+    let header_mime = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(normalize_image_mime);
+    let bytes = response.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > MAX_FAVICON_BYTES {
+        return None;
+    }
+    let content_type = sniff_image_mime(&bytes)
+        .or(header_mime)
+        .or_else(|| content_type_for_extension(Path::new(path_hint)))?;
+    if !looks_like_image(&bytes, content_type) {
+        return None;
+    }
+    Some(FaviconAsset {
+        bytes: bytes.to_vec(),
+        content_type,
+    })
+}
+
+async fn fetch_remote_text(client: &reqwest::Client, url: &str) -> Option<String> {
+    let response = client.get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    if let Some(len) = response.content_length() {
+        if len as usize > MAX_HTML_SCAN_BYTES {
+            return None;
+        }
+    }
+    let bytes = response.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > MAX_HTML_SCAN_BYTES {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+async fn resolve_github_repo_favicon_from_base(
+    client: &reqwest::Client,
+    raw_base: &str,
+    repo: &GitHubRepo,
+) -> Option<FaviconAsset> {
+    let repo_prefix = format!("{raw_base}/{}/{}/HEAD", repo.owner, repo.repo);
+
+    // 1. Check common static favicon paths concurrently and keep highest priority.
+    let mut static_set = tokio::task::JoinSet::new();
+    for (idx, path) in REMOTE_STATIC_FAVICON_PATHS.iter().enumerate() {
+        let client = client.clone();
+        let url = format!("{repo_prefix}/{path}");
+        let path_owned = (*path).to_owned();
+        static_set.spawn(async move {
+            (idx, fetch_remote_image(&client, &url, &path_owned).await)
+        });
+    }
+    let mut best_static: Option<(usize, FaviconAsset)> = None;
+    while let Some(res) = static_set.join_next().await {
+        if let Ok((idx, Some(asset))) = res {
+            if best_static.as_ref().is_none_or(|(best_idx, _)| idx < *best_idx) {
+                best_static = Some((idx, asset));
+            }
+        }
+    }
+    if let Some((_, asset)) = best_static {
+        return Some(asset);
+    }
+
+    // 2. Scan priority HTML/JS entrypoints for `<link rel="icon">` (including
+    //    inline `data:image/...` URIs or relative icon paths).
+    let mut text_set = tokio::task::JoinSet::new();
+    for (idx, path) in PRIORITY_TEXT_FILES.iter().enumerate() {
+        let client = client.clone();
+        let url = format!("{repo_prefix}/{path}");
+        text_set.spawn(async move { (idx, fetch_remote_text(&client, &url).await) });
+    }
+    let mut texts: Vec<(usize, String)> = Vec::new();
+    while let Some(res) = text_set.join_next().await {
+        if let Ok((idx, Some(text))) = res {
+            texts.push((idx, text));
+        }
+    }
+    texts.sort_by_key(|(idx, _)| *idx);
+
+    for (_, text) in texts {
+        for href in extract_icon_hrefs(&text) {
+            if href.starts_with("data:") {
+                if let Some(asset) = decode_data_uri(&href) {
+                    return Some(asset);
+                }
+                continue;
+            }
+            if href.contains("://") || href.starts_with("//") {
+                continue;
+            }
+            let Some(rel) = safe_relative_path(&href) else {
+                continue;
+            };
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            for prefix in ["", "public/", "static/", "assets/", "web/", "client/", "src/"] {
+                let candidate = format!("{prefix}{rel_str}");
+                let url = format!("{repo_prefix}/{candidate}");
+                if let Some(asset) = fetch_remote_image(client, &url, &candidate).await {
+                    return Some(asset);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Resolves a public GitHub Pocket repository's favicon from raw GitHub files,
+/// caching both hits and misses in memory.
+pub async fn resolve_github_repo_favicon(raw_repo: &str) -> Option<FaviconAsset> {
+    let repo = parse_github_repo(raw_repo).ok()?;
+    let cache_key = repo.display_slug().to_ascii_lowercase();
+
+    {
+        let guard = remote_favicon_cache().lock().await;
+        if let Some(entry) = guard.get(&cache_key) {
+            if entry.fetched_at.elapsed() < REMOTE_FAVICON_CACHE_TTL {
+                return entry.asset.clone();
+            }
+        }
+    }
+
+    let client = http_client(REMOTE_FAVICON_TIMEOUT).ok()?;
+    let asset = resolve_github_repo_favicon_from_base(&client, RAW_GITHUB_BASE, &repo).await;
+
+    let mut guard = remote_favicon_cache().lock().await;
+    if guard.len() >= MAX_REMOTE_FAVICON_CACHE_ENTRIES && !guard.contains_key(&cache_key) {
+        guard.retain(|_, entry| entry.fetched_at.elapsed() < REMOTE_FAVICON_CACHE_TTL);
+        if guard.len() >= MAX_REMOTE_FAVICON_CACHE_ENTRIES {
+            guard.clear();
+        }
+    }
+    guard.insert(
+        cache_key,
+        CachedRemoteFavicon {
+            fetched_at: Instant::now(),
+            asset: asset.clone(),
+        },
+    );
+    asset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,5 +852,106 @@ mod tests {
 
         let asset = resolve_from_directory(dir.path()).expect("should resolve /assets/brand.svg");
         assert_eq!(asset.content_type, "image/svg+xml");
+    }
+
+    async fn spawn_mock_raw_server(
+        routes: Vec<(String, &'static str, Vec<u8>)>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let routes = std::sync::Arc::new(routes);
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                let routes = routes.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let Ok(n) = socket.read(&mut buf).await else {
+                        return;
+                    };
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let path = req
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().nth(1))
+                        .unwrap_or("");
+                    if let Some((_, content_type, body)) =
+                        routes.iter().find(|(p, _, _)| p == path)
+                    {
+                        let header = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = socket.write_all(header.as_bytes()).await;
+                        let _ = socket.write_all(body).await;
+                    } else {
+                        let _ = socket
+                            .write_all(
+                                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            )
+                            .await;
+                    }
+                });
+            }
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn resolves_remote_github_static_favicon_svg() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8"/></svg>"#.to_vec();
+        let (base, handle) = spawn_mock_raw_server(vec![(
+            "/runpockets/coinkiwi/HEAD/public/favicon.svg".to_owned(),
+            "image/svg+xml",
+            svg.clone(),
+        )])
+        .await;
+        let client = http_client(Duration::from_secs(2)).unwrap();
+        let repo = GitHubRepo {
+            owner: "runpockets".to_owned(),
+            repo: "coinkiwi".to_owned(),
+        };
+        let asset = resolve_github_repo_favicon_from_base(&client, &base, &repo)
+            .await
+            .expect("should resolve public/favicon.svg");
+        assert_eq!(asset.content_type, "image/svg+xml");
+        assert_eq!(asset.bytes, svg);
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn resolves_remote_github_inline_svg_from_index_html_and_returns_none_when_missing() {
+        let html = br#"<head><link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16'/></svg>"></head>"#.to_vec();
+        let (base, handle) = spawn_mock_raw_server(vec![(
+            "/runpockets/coinkiwi/HEAD/public/index.html".to_owned(),
+            "text/html",
+            html,
+        )])
+        .await;
+        let client = http_client(Duration::from_secs(2)).unwrap();
+        let repo = GitHubRepo {
+            owner: "runpockets".to_owned(),
+            repo: "coinkiwi".to_owned(),
+        };
+        let asset = resolve_github_repo_favicon_from_base(&client, &base, &repo)
+            .await
+            .expect("should resolve inline svg data uri");
+        assert_eq!(asset.content_type, "image/svg+xml");
+
+        let empty_repo = GitHubRepo {
+            owner: "runpockets".to_owned(),
+            repo: "no-icon".to_owned(),
+        };
+        assert!(
+            resolve_github_repo_favicon_from_base(&client, &base, &empty_repo)
+                .await
+                .is_none()
+        );
+        handle.abort();
     }
 }

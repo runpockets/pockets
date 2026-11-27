@@ -5,6 +5,37 @@
   min-height: 0;
 }
 
+.external-workspace-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.external-workspace-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-workspace-favicon {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.external-workspace-favicon[data-loaded="true"] {
+  position: static;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  object-fit: contain;
+  margin-right: var(--space-8);
+  opacity: 1;
+}
+
 .external-workspace-content {
   flex: 1;
   min-height: 0;

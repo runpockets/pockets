@@ -13,26 +13,51 @@ identity; do not generate a separate project or edit Pockets' managed snapshots.
   Package installation and framework build servers are not supported yet.
 - Bind the server to `HOST` and `PORT` provided by Pockets, with container
   defaults `0.0.0.0` and `8080`. Keep the manifest health endpoint working.
-- Persist app data under `DATA_DIR` (default `/data`), never in source files.
+- Persist app data and temporary files under `DATA_DIR` (default `/data`),
+  never in source files — Preview mounts source **read-only** at `/work`.
   Use temporary data directories and ephemeral ports in tests. For API-backed
   apps, treat `DATA_DIR` (not browser `localStorage`) as the shared cache
   across browsers, devices, and container restarts.
 - Keep `pocket.yaml`'s `metadata.id` stable. Update `Containerfile` when adding
-  source/assets so the installed image includes everything the preview serves.
+  source/assets (for example `public/`) so the installed image includes
+  everything the preview serves.
+- Enforce basic HTTP hygiene: bound request body sizes, validate all input,
+  escape untrusted text in HTML responses, never use `GET` for state-changing
+  mutations, and protect browser write endpoints against cross-origin requests
+  (for example, verify `Origin` / `Sec-Fetch-Site` or require `application/json`).
 - For read-only APIs, declare each exact lowercase hostname under `previewApis`
   in `pocket.yaml` as an object with `host`, `name`, and `purpose`. Pockets asks
-  the owner to approve new hosts. When `POCKETS_HTTPS_GATEWAY` is set, send GET
-  or HEAD to `/fetch` on that URL with the full provider HTTPS URL in the `url`
-  query parameter. The installed app uses the normal provider URL. Handle
-  loading, stale data, and failures, and label samples.
+  the owner to approve new hosts. When `POCKETS_HTTPS_GATEWAY` is set, send `GET`
+  or `HEAD` to `/fetch` on that URL with the full provider HTTPS URL in the `url`
+  query parameter; the installed app calls the provider directly:
+
+  ```js
+  async function fetchApi(endpoint, headers = {}) {
+    const gateway = process.env.POCKETS_HTTPS_GATEWAY;
+    const url = gateway ? new URL("/fetch", gateway) : new URL(endpoint);
+    if (gateway) url.searchParams.set("url", endpoint);
+    return fetch(url, { headers, redirect: "error" });
+  }
+  ```
+
+  Gateway limits in Preview: HTTPS port 443 on public IPv4 hosts only, `GET`/
+  `HEAD` only, redirects rejected (`3xx` except `304` return `502`), 4 MiB max
+  response, 10 s timeout, and only allowlisted headers are forwarded
+  (`Authorization`, `Accept`, `API-Key`, `If-None-Match`, `If-Modified-Since`,
+  `User-Agent`, `X-*-Key`, `X-*-Token`). Handle loading, stale data, and
+  failures, and label samples.
+
 - Read app settings from environment variables and declare each accepted
   variable under `runtimeVariables` in `pocket.yaml` with `name`, `kind`
   (`secret` or `plain`), `purpose`, and optional `required: true` so Pockets
   surfaces them automatically in **Runtime variables**. Ask the user to
   configure their values in Pockets and start Preview there. Keep credentials
   out of `pocket.yaml`, source, browser responses, and logs.
-- Source snapshots exclude secrets, Git metadata, local `data/`, caches and
-  `node_modules`. Do not depend on excluded files in preview or installation.
+- Source snapshots and Preview exclude secrets (`.env*`, `credentials.json`,
+  `*.pem`, `*.key`, `*.p12`, `*.pfx`), Git metadata, local `data/`, `dist/`,
+  `target/`, `node_modules`, hidden entries (except root `.gitignore`,
+  `.containerignore`, `.dockerignore`), symlinks, and hard links. Do not depend
+  on excluded paths in preview or installation.
 
 ## Instant startup for API-backed Pockets (optional)
 
@@ -98,6 +123,6 @@ If the user plans to publish this Pocket to GitHub and submit it to Pockets Hub:
   (or replace) `LICENSE`.
 - Keep the final `USER` in `Containerfile` non-root (`USER node`), avoid
   `curl | sh` or hardcoded `ENV` secrets, and never commit `.env` or key files.
-- *Optional (suggested):* add a browser-tab icon (`public/favicon.svg` or a
+- _Optional (suggested):_ add a browser-tab icon (`public/favicon.svg` or a
   `<link rel="icon">` tag) so the Pocket displays a custom logo on Live Pocket
   cards and browser tabs.

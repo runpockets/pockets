@@ -8,7 +8,7 @@ import type {
 } from "./CreationPanel";
 import { TitleBar } from "./TitleBar";
 import { IconButton, StatusPip } from "./Status";
-import { IconPanelLeft, IconPanelRight } from "./Icons";
+import { IconCheck, IconPanelLeft, IconPanelRight } from "./Icons";
 import { formatVersionTag } from "./formatVersion";
 import "./NewProject.css";
 
@@ -50,6 +50,21 @@ export interface GitHubPocketPreview {
   existingProjectId?: string | null;
 }
 
+function safeExternalUrl(url?: string | null): string | null {
+  if (!url) return null;
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
+function hostRuntimeNote(): string {
+  if (typeof navigator !== "undefined") {
+    const platform = `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`;
+    if (/mac/i.test(platform)) {
+      return "Runs on this Mac with Podman";
+    }
+  }
+  return "Runs on this computer with Podman";
+}
+
 function capabilitySummary(
   runtimeVariables?: RuntimeVariable[],
   previewApis?: PreviewApi[],
@@ -58,12 +73,162 @@ function capabilitySummary(
   const varCount = runtimeVariables?.length ?? 0;
   const apiCount = previewApis?.length ?? 0;
   if (varCount > 0) {
-    parts.push(`${varCount} runtime ${varCount === 1 ? "variable" : "variables"}`);
+    parts.push(`${varCount} ${varCount === 1 ? "setting" : "settings"}`);
   }
   if (apiCount > 0) {
-    parts.push(`${apiCount} preview ${apiCount === 1 ? "API" : "APIs"}`);
+    parts.push(
+      `${apiCount} ${apiCount === 1 ? "web service" : "web services"}`,
+    );
   }
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function HubPocketFavicon({
+  repo,
+  existingProjectId,
+}: {
+  repo: string;
+  existingProjectId?: string | null;
+}) {
+  const src = existingProjectId
+    ? `/api/projects/${encodeURIComponent(existingProjectId)}/favicon`
+    : `/api/hub/favicon?repo=${encodeURIComponent(repo)}`;
+  const [loadState, setLoadState] = useState<{
+    src: string;
+    status: "loaded" | "missing";
+  } | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const status = loadState?.src === src ? loadState.status : "loading";
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoadState({ src, status: "loaded" });
+    }
+  }, [src]);
+
+  if (status === "missing") {
+    return null;
+  }
+
+  return (
+    <img
+      key={src}
+      ref={imgRef}
+      className="new-project-hub-favicon"
+      src={src}
+      alt=""
+      aria-hidden="true"
+      data-loaded={status === "loaded" ? "true" : undefined}
+      onLoad={() => setLoadState({ src, status: "loaded" })}
+      onError={() => setLoadState({ src, status: "missing" })}
+    />
+  );
+}
+
+function HubPocketCard({
+  pocket,
+  busy,
+  isPulling,
+  onPullRepo,
+  onSelectProject,
+}: {
+  pocket: HubPocket;
+  busy: boolean;
+  isPulling: boolean;
+  onPullRepo: (repo: string) => void;
+  onSelectProject?: (id: string) => void;
+}) {
+  const alreadyAdded = Boolean(pocket.existingProjectId);
+
+  return (
+    <li className="new-project-hub-card">
+      <div className="new-project-hub-body">
+        <div className="new-project-hub-title-row">
+          <div className="new-project-hub-identity">
+            <HubPocketFavicon
+              repo={pocket.repo}
+              existingProjectId={pocket.existingProjectId}
+            />
+            <h3 className="new-project-hub-name">{pocket.name}</h3>
+          </div>
+          {pocket.version && (
+            <span className="new-project-hub-version">
+              {formatVersionTag(pocket.version)}
+            </span>
+          )}
+          {pocket.verified && (
+            <span className="new-project-hub-verified">
+              <IconCheck size={12} />
+              Verified
+            </span>
+          )}
+        </div>
+        {pocket.description && (
+          <p className="new-project-hub-description">{pocket.description}</p>
+        )}
+        <p className="new-project-hub-facts">
+          {safeExternalUrl(pocket.repoUrl) ? (
+            <a
+              href={pocket.repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="new-project-hub-source-link"
+            >
+              <span>{pocket.repo}</span>
+              <span
+                className="new-project-hub-source-arrow"
+                aria-hidden="true"
+              >
+                ↗
+              </span>
+            </a>
+          ) : (
+            <span className="new-project-hub-source-text">{pocket.repo}</span>
+          )}
+        </p>
+      </div>
+
+      <div className="new-project-hub-footer">
+        {alreadyAdded && pocket.existingProjectId && onSelectProject ? (
+          <>
+            <span className="new-project-hub-added">
+              <StatusPip tone="ok" word="In your Pockets" />
+            </span>
+            <button
+              type="button"
+              className="new-project-hub-action"
+              disabled={busy}
+              onClick={() => onSelectProject(pocket.existingProjectId!)}
+            >
+              Manage
+            </button>
+          </>
+        ) : (
+          <>
+            {!pocket.hostSupported && pocket.hostError ? (
+              <span className="new-project-hub-foot-error">
+                {pocket.hostError}
+              </span>
+            ) : (
+              <span className="new-project-hub-foot-hint">
+                {hostRuntimeNote()}
+              </span>
+            )}
+            <button
+              type="button"
+              className="button-primary new-project-hub-action"
+              disabled={busy || !pocket.hostSupported}
+              onClick={() => onPullRepo(pocket.repo)}
+            >
+              {isPulling ? "Adding…" : "Add to Pockets"}
+            </button>
+          </>
+        )}
+      </div>
+    </li>
+  );
 }
 
 export default function NewProject({
@@ -253,83 +418,16 @@ export default function NewProject({
               <p className="hint">Loading featured Pockets…</p>
             ) : hubPockets.length > 0 ? (
               <ul className="new-project-hub-grid">
-                {hubPockets.map((pocket) => {
-                  const caps = capabilitySummary(
-                    pocket.runtimeVariables,
-                    pocket.previewApis,
-                  );
-                  const isPulling = pullingRepo === pocket.repo;
-                  const alreadyAdded = Boolean(pocket.existingProjectId);
-                  return (
-                    <li key={pocket.repo} className="new-project-hub-card">
-                      <div className="new-project-hub-card-head">
-                        <div className="new-project-hub-title-row">
-                          <h3 className="new-project-hub-name">
-                            {pocket.name}
-                          </h3>
-                          {pocket.version && (
-                            <span className="new-project-tag">
-                              {formatVersionTag(pocket.version)}
-                            </span>
-                          )}
-                        </div>
-                        {pocket.verified && (
-                          <div className="new-project-hub-badges">
-                            <span className="new-project-tag new-project-tag-verified">
-                              Verified
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {pocket.description && (
-                        <p className="new-project-hub-description">
-                          {pocket.description}
-                        </p>
-                      )}
-                      <p className="new-project-hub-meta">
-                        <span>{pocket.repo}</span>
-                        {caps && <span> · {caps}</span>}
-                      </p>
-                      {!pocket.hostSupported && pocket.hostError && (
-                        <p className="error">{pocket.hostError}</p>
-                      )}
-                      <div className="new-project-hub-actions">
-                        {alreadyAdded &&
-                        pocket.existingProjectId &&
-                        onSelectProject ? (
-                          <>
-                            <span className="new-project-hub-added">
-                              Already in Pockets
-                            </span>
-                            <button
-                              type="button"
-                              className="new-project-action-right"
-                              disabled={busy}
-                              onClick={() =>
-                                onSelectProject(pocket.existingProjectId!)
-                              }
-                            >
-                              Open Pocket
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            className="button-primary new-project-action-right"
-                            disabled={busy || !pocket.hostSupported}
-                            onClick={() => void pullGitHubRepo(pocket.repo)}
-                          >
-                            {isPulling
-                              ? "Pulling…"
-                              : alreadyAdded
-                                ? "Open Pocket"
-                                : "Pull Pocket"}
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
+                {hubPockets.map((pocket) => (
+                  <HubPocketCard
+                    key={pocket.repo}
+                    pocket={pocket}
+                    busy={busy}
+                    isPulling={pullingRepo === pocket.repo}
+                    onPullRepo={(repo) => void pullGitHubRepo(repo)}
+                    onSelectProject={onSelectProject}
+                  />
+                ))}
               </ul>
             ) : null}
           </section>
@@ -397,9 +495,20 @@ export default function NewProject({
                         : "Incompatible host architecture"
                     }
                   />
-                  <span className="new-project-repo-slug">
-                    {repoPreview.slug}
-                  </span>
+                  {safeExternalUrl(repoPreview.repoUrl) ? (
+                    <a
+                      href={repoPreview.repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="new-project-repo-slug new-project-repo-link"
+                    >
+                      {repoPreview.slug}
+                    </a>
+                  ) : (
+                    <span className="new-project-repo-slug">
+                      {repoPreview.slug}
+                    </span>
+                  )}
                 </div>
                 <div className="new-project-hub-title-row">
                   <h3 className="new-project-hub-name">
@@ -429,21 +538,21 @@ export default function NewProject({
                 {!repoPreview.hostSupported && repoPreview.hostError && (
                   <p className="error">{repoPreview.hostError}</p>
                 )}
-                <div className="new-project-hub-actions">
+                <div className="new-project-repo-actions">
                   {repoPreview.existingProjectId && onSelectProject ? (
                     <>
                       <span className="new-project-hub-added">
-                        Already in Pockets
+                        <StatusPip tone="ok" word="In your Pockets" />
                       </span>
                       <button
                         type="button"
-                        className="new-project-action-right"
+                        className="new-project-hub-action"
                         disabled={busy}
                         onClick={() =>
                           onSelectProject(repoPreview.existingProjectId!)
                         }
                       >
-                        Open Pocket
+                        Manage
                       </button>
                     </>
                   ) : (

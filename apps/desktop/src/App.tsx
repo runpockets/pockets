@@ -544,6 +544,15 @@ export default function App() {
     !paneHidden,
   );
   const previewPocketName = selectedProject?.manifest.metadata.name ?? null;
+  const selectedStatus =
+    selectedProject !== null ? catalog.statuses[selectedProject.id] : undefined;
+  const selectedRunning =
+    selectedStatus?.status === "ready" &&
+    selectedStatus.value.state === "running";
+  const selectedFaviconCacheKey =
+    selectedProject !== null
+      ? `${selectedProject.sourceDigest.slice(0, 12)}-${selectedRunning ? "1" : "0"}`
+      : undefined;
   const [overlaySnapshot, setOverlaySnapshot] = useState<string | null>(null);
   useEffect(() => {
     if (!paneHidden || previewProjectId === null || !inTauri) {
@@ -835,10 +844,7 @@ export default function App() {
   return (
     <OverlayProvider value={overlayApi}>
       <FullscreenProvider value={fullscreen}>
-        <div
-          className="app"
-          data-fullscreen={fullscreen ? "true" : undefined}
-        >
+        <div className="app" data-fullscreen={fullscreen ? "true" : undefined}>
           {/* Inside Tauri on macOS the native title bar is merged into the row
             (tauri.conf.json sets titleBarStyle "Overlay" with hiddenTitle),
             and since v3 §2 there is exactly one 52px title row across the
@@ -994,6 +1000,7 @@ export default function App() {
                           key={selectedProject.id}
                           projectId={selectedProject.id}
                           projectName={selectedProject.manifest.metadata.name}
+                          faviconCacheKey={selectedFaviconCacheKey}
                           linked={selectedProject.developmentLinked === true}
                           previewApiAccess={preview.apiAccess}
                           previewApis={selectedProject.manifest.previewApis}

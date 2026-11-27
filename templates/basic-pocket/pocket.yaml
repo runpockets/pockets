@@ -14,6 +14,13 @@ web:
 storage:
   name: data
   path: /data
+# Optional: declare read-only HTTPS APIs accessed during Preview.
+# Pockets prompts the owner to approve new hostnames; see POCKETS.md.
+# previewApis:
+#   - host: api.example.com
+#     name: Example API
+#     purpose: Fetches public market quotes.
+#
 # Optional: declare runtime environment variables accepted by this Pocket.
 # Values are never placed here; Pockets stores them locally per environment.
 # runtimeVariables:

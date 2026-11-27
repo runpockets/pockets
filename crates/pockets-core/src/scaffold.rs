@@ -171,8 +171,17 @@ mod tests {
         assert!(runtime_instructions.contains("npm test"));
         assert!(runtime_instructions.contains("previewApis"));
         assert!(runtime_instructions.contains("POCKETS_HTTPS_GATEWAY"));
+        assert!(runtime_instructions.contains("fetchApi"));
+        assert!(runtime_instructions.contains("read-only"));
         assert!(runtime_instructions.contains("lib/cache.js"));
         assert!(runtime_instructions.contains("stale-while-revalidate"));
+        let containerfile = std::fs::read_to_string(folder.join("Containerfile")).unwrap();
+        assert!(
+            crate::hub::audit_containerfile(&containerfile).is_empty(),
+            "starter Containerfile should pass Hub security audit"
+        );
+        let gitignore = std::fs::read_to_string(folder.join(".gitignore")).unwrap();
+        assert!(gitignore.contains(".env"));
         assert!(folder.join("lib/cache.js").is_file());
         assert!(folder.join("test/cache.test.js").is_file());
         assert!(folder.join("test/server.test.js").is_file());
@@ -205,6 +214,16 @@ mod tests {
         }
         assert!(create(&store, temp.path(), "Bad\nName", "bad-name").is_err());
         assert!(create(&store, temp.path(), "Bad\u{2028}Name", "bad-name").is_err());
+        assert!(
+            render("My __POCKET_CUSTOM__ App", "valid-slug")
+                .unwrap_err()
+                .contains("unresolved template value")
+        );
+        let max_name = "a".repeat(80);
+        let max_slug = "a".repeat(63);
+        assert!(inputs(&max_name, &max_slug).is_ok());
+        assert!(inputs(&"a".repeat(81), &max_slug).is_err());
+        assert!(inputs(&max_name, &"a".repeat(64)).is_err());
         std::fs::create_dir_all(store.root()).unwrap();
         assert!(create(&store, store.root(), "Name", "managed").is_err());
         assert!(!store.root().join("managed").exists());

@@ -17,6 +17,7 @@
     "test:desktop": "npm run test --workspace @pockets/desktop",
     "test:gateway": "node --test crates/pockets-core/src/assets/preview-egress.check.cjs",
     "test:schema": "node --test packages/pocket-spec/schema.test.cjs",
+    "test:starter": "npm test --prefix templates/basic-pocket",
     "test:rust": "cargo test --workspace",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

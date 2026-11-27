@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPocket } from "../server.js";
@@ -52,4 +52,53 @@ test("visit count persists across restarts", async (t) => {
     await readFile(join(dataDir, "visits.json"), "utf8"),
   );
   assert.equal(stored.visits, 2);
+});
+
+test("concurrent visits are serialized without losing updates", async (t) => {
+  const dataDir = await makeDataDir(t);
+  const { pocket, base } = await startPocket(dataDir);
+  t.after(() => pocket.close());
+
+  const total = 10;
+  const counts = await Promise.all(
+    Array.from({ length: total }, async () =>
+      visitsIn(await fetch(`${base}/`)),
+    ),
+  );
+  assert.deepEqual(
+    [...counts].sort((a, b) => a - b),
+    Array.from({ length: total }, (_, i) => i + 1),
+  );
+
+  const stored = JSON.parse(
+    await readFile(join(dataDir, "visits.json"), "utf8"),
+  );
+  assert.equal(stored.visits, total);
+});
+
+test("corrupted visits.json recovers cleanly on the next request", async (t) => {
+  const dataDir = await makeDataDir(t);
+  await writeFile(join(dataDir, "visits.json"), "{not-valid-json", "utf8");
+
+  const { pocket, base } = await startPocket(dataDir);
+  t.after(() => pocket.close());
+
+  assert.equal(await visitsIn(await fetch(`${base}/`)), 1);
+
+  const stored = JSON.parse(
+    await readFile(join(dataDir, "visits.json"), "utf8"),
+  );
+  assert.equal(stored.visits, 1);
+});
+
+test("rejects non-GET methods with 405 and unknown routes with 404", async (t) => {
+  const dataDir = await makeDataDir(t);
+  const { pocket, base } = await startPocket(dataDir);
+  t.after(() => pocket.close());
+
+  const postRes = await fetch(`${base}/`, { method: "POST" });
+  assert.equal(postRes.status, 405);
+
+  const notFoundRes = await fetch(`${base}/does-not-exist`);
+  assert.equal(notFoundRes.status, 404);
 });

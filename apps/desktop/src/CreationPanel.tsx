@@ -120,13 +120,20 @@ function PocketCardLogo({
   name: string;
   cacheKey: string;
 }) {
-  const [state, setState] = useState<"loading" | "loaded" | "missing">(
-    "loading",
-  );
   const src = `/api/projects/${encodeURIComponent(projectId)}/favicon?v=${encodeURIComponent(cacheKey)}`;
+  const [loadState, setLoadState] = useState<{
+    src: string;
+    status: "loaded" | "missing";
+  } | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const state = loadState?.src === src ? loadState.status : "loading";
 
   useEffect(() => {
-    setState("loading");
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoadState({ src, status: "loaded" });
+    }
   }, [src]);
 
   return (
@@ -142,12 +149,14 @@ function PocketCardLogo({
       )}
       {state !== "missing" && (
         <img
+          key={src}
+          ref={imgRef}
           className="creation-card-logo-img"
           src={src}
           alt=""
           data-loaded={state === "loaded" ? "true" : undefined}
-          onLoad={() => setState("loaded")}
-          onError={() => setState("missing")}
+          onLoad={() => setLoadState({ src, status: "loaded" })}
+          onError={() => setLoadState({ src, status: "missing" })}
         />
       )}
     </span>

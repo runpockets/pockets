@@ -1045,6 +1045,47 @@ fn is_authenticated(headers: &HeaderMap, expected_token: &str) -> bool {
     false
 }
 
+fn percent_decode_query_value(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(val) = u8::from_str_radix(hex, 16) {
+                    out.push(val);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn favicon_response(asset: Option<pockets_core::favicon::FaviconAsset>) -> Response<ResponseBody> {
+    match asset {
+        Some(asset) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, asset.content_type)
+            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+            .header(
+                header::CONTENT_SECURITY_POLICY,
+                "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+            )
+            .header(header::CACHE_CONTROL, "private, max-age=300")
+            .body(ResponseBody::full(Bytes::from(asset.bytes)))
+            .unwrap(),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(ResponseBody::empty())
+            .unwrap(),
+    }
+}
+
 fn extract_query_param(query: &str, key: &str) -> Option<String> {
     for pair in query.split('&') {
         if let Some((k, v)) = pair.split_once('=') {
@@ -1280,6 +1321,22 @@ async fn handle_request(
             }
         }
 
+        (&Method::GET, "/api/hub/favicon") => {
+            let current_token = state.current_token();
+            if !is_authenticated(req.headers(), &current_token) {
+                return json_response(
+                    StatusCode::UNAUTHORIZED,
+                    json!({ "error": "Authentication required." }),
+                );
+            }
+            let Some(raw_repo) = extract_query_param(&query, "repo") else {
+                return favicon_response(None);
+            };
+            let repo = percent_decode_query_value(&raw_repo);
+            let asset = pockets_core::favicon::resolve_github_repo_favicon(&repo).await;
+            favicon_response(asset)
+        }
+
         (&Method::GET, p) if p.starts_with("/api/projects/") && p.ends_with("/favicon") => {
             let current_token = state.current_token();
             if !is_authenticated(req.headers(), &current_token) {
@@ -1292,24 +1349,8 @@ async fn handle_request(
                 .trim_start_matches("/api/projects/")
                 .trim_end_matches("/favicon")
                 .to_owned();
-            match pockets_core::favicon::resolve_project_favicon(&state.ctx, &id).await {
-                Some(asset) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, asset.content_type)
-                    .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-                    .header(
-                        header::CONTENT_SECURITY_POLICY,
-                        "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
-                    )
-                    .header(header::CACHE_CONTROL, "private, max-age=300")
-                    .body(ResponseBody::full(Bytes::from(asset.bytes)))
-                    .unwrap(),
-                None => Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header(header::CACHE_CONTROL, "no-store")
-                    .body(ResponseBody::empty())
-                    .unwrap(),
-            }
+            let asset = pockets_core::favicon::resolve_project_favicon(&state.ctx, &id).await;
+            favicon_response(asset)
         }
 
         (&Method::GET, p) if p.starts_with("/api/projects/") && p.ends_with("/backup") => {

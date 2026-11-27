@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "./api";
 import DevelopmentPanel from "./DevelopmentPanel";
 import HubSubmissionPanel from "./HubSubmissionPanel";
@@ -11,9 +11,54 @@ import { IconButton } from "./Status";
 import { IconPanelLeft, IconPanelRight } from "./Icons";
 import "./ExternalWorkspace.css";
 
+function ProjectTitleFavicon({
+  projectId,
+  cacheKey,
+}: {
+  projectId: string;
+  cacheKey?: string;
+}) {
+  const src = cacheKey
+    ? `/api/projects/${encodeURIComponent(projectId)}/favicon?v=${encodeURIComponent(cacheKey)}`
+    : `/api/projects/${encodeURIComponent(projectId)}/favicon`;
+  const [loadState, setLoadState] = useState<{
+    src: string;
+    status: "loaded" | "missing";
+  } | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const status = loadState?.src === src ? loadState.status : "loading";
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoadState({ src, status: "loaded" });
+    }
+  }, [src]);
+
+  if (status === "missing") {
+    return null;
+  }
+
+  return (
+    <img
+      key={src}
+      ref={imgRef}
+      className="external-workspace-favicon"
+      src={src}
+      alt=""
+      aria-hidden="true"
+      data-loaded={status === "loaded" ? "true" : undefined}
+      onLoad={() => setLoadState({ src, status: "loaded" })}
+      onError={() => setLoadState({ src, status: "missing" })}
+    />
+  );
+}
+
 export default function ExternalWorkspace({
   projectId,
   projectName,
+  faviconCacheKey,
   linked,
   previewApiAccess,
   previewApis,
@@ -27,6 +72,7 @@ export default function ExternalWorkspace({
 }: {
   projectId: string;
   projectName: string;
+  faviconCacheKey?: string;
   linked: boolean;
   previewApiAccess: PreviewApiAccess;
   previewApis?: PreviewApi[];
@@ -69,7 +115,15 @@ export default function ExternalWorkspace({
             </IconButton>
           ) : undefined
         }
-        title={<span>{projectName}</span>}
+        title={
+          <span className="external-workspace-title">
+            <ProjectTitleFavicon
+              projectId={projectId}
+              cacheKey={faviconCacheKey}
+            />
+            <span className="external-workspace-title-text">{projectName}</span>
+          </span>
+        }
         trailing={
           previewCollapsed ? (
             <IconButton label="Toggle preview" onClick={onTogglePreview}>

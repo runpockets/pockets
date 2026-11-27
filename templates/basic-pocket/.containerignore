@@ -1,6 +1,13 @@
 # Keep the container build context minimal. The Containerfile copies
 # package.json, server.js, and lib/; these entries additionally shrink the context.
 .git
+.env
+.env.*
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
 data
 node_modules
 test

@@ -51,8 +51,8 @@
 .new-project-hub-grid {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  gap: var(--space-12);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: var(--space-14);
   margin: 0;
   padding: 0;
 }
@@ -60,39 +60,79 @@
 .new-project-hub-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
-  padding: var(--space-14) var(--space-16);
   background: var(--card);
   border: 1px solid var(--border);
   min-width: 0;
 }
 
-.new-project-hub-card-head {
+.new-project-hub-body {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-8);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-16);
+  flex: 1;
+  min-width: 0;
 }
 
 .new-project-hub-title-row {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
+  align-items: center;
+  gap: var(--space-10);
   flex-wrap: wrap;
+}
+
+.new-project-hub-identity {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.new-project-hub-favicon {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.new-project-hub-favicon[data-loaded="true"] {
+  position: static;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  object-fit: contain;
+  margin-right: var(--space-8);
+  opacity: 1;
 }
 
 .new-project-hub-name {
   font-family: var(--font-mono);
   font-size: var(--font-size-card-title);
   font-weight: 600;
+  line-height: 1.2;
   color: var(--text);
 }
 
-.new-project-hub-badges {
-  display: flex;
+.new-project-hub-version {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text-dim);
+}
+
+.new-project-hub-verified {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text-2);
+}
+
+.new-project-hub-verified svg {
+  color: var(--ok);
+  flex: none;
 }
 
 .new-project-tag {
@@ -104,17 +144,74 @@
   padding: 1px 6px;
 }
 
-.new-project-tag-verified {
-  color: var(--ok);
-  border-color: var(--border-strong);
-}
-
 .new-project-hub-description {
   font-family: var(--font-mono);
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+.new-project-hub-facts {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.new-project-hub-source-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.new-project-hub-source-link:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-dim);
+  text-underline-offset: 3px;
+}
+
+.new-project-hub-source-arrow {
+  color: var(--text-dim);
+  flex: none;
+}
+
+.new-project-hub-source-link:hover .new-project-hub-source-arrow {
+  color: var(--text);
+}
+
+.new-project-hub-source-text {
+  color: var(--text-2);
+}
+
+.new-project-hub-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-16);
+  border-top: 1px solid var(--border);
+}
+
+.new-project-hub-action {
+  margin-left: auto;
+  padding: 6px 14px;
+}
+
+.new-project-hub-foot-hint {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.new-project-hub-foot-error {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--danger);
 }
 
 .new-project-hub-meta {
@@ -124,12 +221,12 @@
   overflow-wrap: anywhere;
 }
 
-.new-project-hub-actions {
+.new-project-repo-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-10);
-  margin-top: auto;
   padding-top: var(--space-6);
 }
 
@@ -138,9 +235,9 @@
 }
 
 .new-project-hub-added {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ok);
+  color: var(--text-2);
 }
 
 .new-project-github-form {
@@ -187,6 +284,18 @@
 .new-project-repo-slug {
   margin-left: auto;
   color: var(--text-dim);
+}
+
+.new-project-repo-link {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 3px;
+}
+
+.new-project-repo-link:hover {
+  color: var(--text);
+  text-decoration-color: var(--text-dim);
 }
 
 .new-project-create-form {

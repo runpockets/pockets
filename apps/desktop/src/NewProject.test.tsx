@@ -267,11 +267,20 @@ describe("New project", () => {
         "Track crypto portfolios and NZD prices locally.",
       ),
     ).toBeTruthy();
-    expect(within(hubSection).getByText("runpockets/coinkiwi")).toBeTruthy();
+    const repoLink = within(hubSection).getByRole("link", {
+      name: "runpockets/coinkiwi",
+    });
+    expect(repoLink.getAttribute("href")).toBe(
+      "https://github.com/runpockets/coinkiwi",
+    );
+    expect(repoLink.getAttribute("target")).toBe("_blank");
+    expect(repoLink.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within(hubSection).queryByText(/web service|setting/)).toBeNull();
+    expect(within(hubSection).getByText(/with Podman/)).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(
-        within(hubSection).getByRole("button", { name: "Pull Pocket" }),
+        within(hubSection).getByRole("button", { name: "Add to Pockets" }),
       );
     });
     expect(native).toHaveBeenCalledWith("add_github_pocket", {
@@ -283,7 +292,7 @@ describe("New project", () => {
     });
   });
 
-  it("offers Open Pocket when a Hub Pocket is already added", async () => {
+  it("shows In your Pockets and Manage when a Hub Pocket is already added", async () => {
     stubInvoke({
       list_hub_pockets: () => ({
         ...hubCatalog,
@@ -295,11 +304,36 @@ describe("New project", () => {
     const { onSelectProject } = renderForm();
 
     const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
-    const openBtn = await within(hubSection).findByRole("button", {
-      name: "Open Pocket",
+    expect(await within(hubSection).findByText("In your Pockets")).toBeTruthy();
+    const favicon = hubSection.querySelector("img.new-project-hub-favicon");
+    expect(favicon?.getAttribute("src")).toBe(
+      "/api/projects/existing-coinkiwi/favicon",
+    );
+    const manageBtn = within(hubSection).getByRole("button", {
+      name: "Manage",
     });
-    fireEvent.click(openBtn);
+    fireEvent.click(manageBtn);
     expect(onSelectProject).toHaveBeenCalledWith("existing-coinkiwi");
+  });
+
+  it("shows a Hub Pocket's site favicon once loaded and renders nothing when missing", async () => {
+    renderForm();
+
+    const hubSection = screen.getByRole("region", { name: "Pockets Hub" });
+    await within(hubSection).findByText("CoinKiwi");
+
+    const img = hubSection.querySelector("img.new-project-hub-favicon")!;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe(
+      "/api/hub/favicon?repo=runpockets%2Fcoinkiwi",
+    );
+    expect(img.getAttribute("data-loaded")).toBeNull();
+
+    fireEvent.load(img);
+    expect(img.getAttribute("data-loaded")).toBe("true");
+
+    fireEvent.error(img);
+    expect(hubSection.querySelector("img.new-project-hub-favicon")).toBeNull();
   });
 
   it("validates a GitHub repository before pulling and shows its manifest preview", async () => {
@@ -323,6 +357,11 @@ describe("New project", () => {
       name: "Validated repository preview",
     });
     expect(within(preview).getByText("Valid Pocket repository")).toBeTruthy();
+    expect(
+      within(preview)
+        .getByRole("link", { name: "runpockets/coinkiwi" })
+        .getAttribute("href"),
+    ).toBe("https://github.com/runpockets/coinkiwi");
     expect(within(preview).getByText("CoinKiwi")).toBeTruthy();
     expect(
       within(preview).getByText(
