@@ -728,6 +728,25 @@ async fn try_open_existing_daemon(ctx: &AppContext, headless: bool) -> bool {
     false
 }
 
+fn background_service_tip(
+    method: &pockets_core::app_update::InstallMethod,
+    is_windows: bool,
+) -> Option<&'static str> {
+    use pockets_core::app_update::InstallMethod;
+    match method {
+        InstallMethod::Homebrew { .. } => {
+            Some("Tip: run 'brew services start pockets' to keep the dashboard running in the background.")
+        }
+        InstallMethod::Binary { .. } if !is_windows => {
+            Some("Tip: run 'pockets service install' to keep the dashboard running in the background.")
+        }
+        InstallMethod::Binary { .. } => {
+            Some("Tip: run 'pockets service print' for Task Scheduler setup to keep the dashboard running in the background.")
+        }
+        InstallMethod::Development => None,
+    }
+}
+
 async fn run_open(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
     let headless = is_headless_session();
     if try_open_existing_daemon(&ctx, headless).await {
@@ -766,6 +785,10 @@ async fn run_open(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
             )
             .await;
             println!("Press Ctrl+C to stop the dashboard daemon (installed Pockets keep running).");
+            let method = pockets_core::app_update::current_install_method();
+            if let Some(tip) = background_service_tip(&method, cfg!(windows)) {
+                println!("{tip}");
+            }
         }
     });
 
@@ -1284,5 +1307,34 @@ mod tests {
         assert!(!joined.contains("?token="));
         assert!(!joined.contains("?code="));
         assert!(!joined.contains("/auth/bootstrap"));
+    }
+
+    #[test]
+    fn background_service_tip_matches_install_method_and_platform() {
+        use pockets_core::app_update::InstallMethod;
+        use std::path::PathBuf;
+
+        let brew = InstallMethod::Homebrew {
+            prefix: PathBuf::from("/opt/homebrew"),
+            has_brew_podman: true,
+        };
+        assert_eq!(
+            background_service_tip(&brew, false),
+            Some("Tip: run 'brew services start pockets' to keep the dashboard running in the background.")
+        );
+
+        let binary = InstallMethod::Binary {
+            exe_path: PathBuf::from("/usr/local/bin/pockets"),
+        };
+        assert_eq!(
+            background_service_tip(&binary, false),
+            Some("Tip: run 'pockets service install' to keep the dashboard running in the background.")
+        );
+        assert_eq!(
+            background_service_tip(&binary, true),
+            Some("Tip: run 'pockets service print' for Task Scheduler setup to keep the dashboard running in the background.")
+        );
+
+        assert_eq!(background_service_tip(&InstallMethod::Development, false), None);
     }
 }
