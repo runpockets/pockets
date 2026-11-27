@@ -123,18 +123,12 @@ fn canonical_location(path: &Path) -> Result<PathBuf, String> {
     }
 }
 
-#[cfg(unix)]
 fn folder_identity(metadata: &std::fs::Metadata) -> Option<FolderIdentity> {
     use std::os::unix::fs::MetadataExt;
     Some(FolderIdentity {
         device: metadata.dev(),
         inode: metadata.ino(),
     })
-}
-
-#[cfg(not(unix))]
-fn folder_identity(_metadata: &std::fs::Metadata) -> Option<FolderIdentity> {
-    None
 }
 
 fn checked_folder(store: &Store, link: &Link) -> Result<PathBuf, String> {

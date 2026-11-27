@@ -1,6 +1,11 @@
-//! Cross-platform core engine for Pockets: Podman orchestration, project store,
-//! live development preview, Tailscale Serve integration, runtime secrets,
-//! backups, version history, and resource monitoring.
+//! Core engine for Pockets (macOS and Linux): Podman orchestration, project
+//! store, live development preview, Tailscale Serve integration, runtime
+//! secrets, backups, version history, and resource monitoring.
+
+#[cfg(not(unix))]
+compile_error!(
+    "Pockets supports macOS and Linux. On Windows, run Pockets inside WSL2 using the Linux installer."
+);
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -260,15 +265,9 @@ pub async fn open_in_browser(url: &str) -> Result<(), String> {
             .await
             .map(|_| ())
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         runtime::run(Path::new("xdg-open"), &[url])
-            .await
-            .map(|_| ())
-    }
-    #[cfg(windows)]
-    {
-        runtime::run(Path::new("cmd"), &["/C", "start", "", url])
             .await
             .map(|_| ())
     }
@@ -285,15 +284,9 @@ pub async fn open_path_in_os(path: &Path) -> Result<(), String> {
             .await
             .map(|_| ())
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         runtime::run(Path::new("xdg-open"), &[path_str])
-            .await
-            .map(|_| ())
-    }
-    #[cfg(windows)]
-    {
-        runtime::run(Path::new("explorer"), &[path_str])
             .await
             .map(|_| ())
     }

@@ -285,7 +285,7 @@ export async function invoke<T = unknown>(
     const folderPath = await pickFolder({
       title: "Choose project folder",
       description:
-        "Select a Pocket folder to link, or any local project folder to pocketize.",
+        "Select a Pocket folder to link, or any project folder to pocketize (creates a fresh starter subfolder without touching your existing files).",
       confirmLabel: "Choose folder",
       preferPocketFolder: true,
     });

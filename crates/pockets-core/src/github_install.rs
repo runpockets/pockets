@@ -410,16 +410,12 @@ pub async fn inspect_github_pocket(
 }
 
 fn find_git() -> Result<PathBuf, String> {
-    let candidates: &[&str] = if cfg!(windows) {
-        &["git.exe"]
-    } else {
-        &[
-            "/usr/bin/git",
-            "/opt/homebrew/bin/git",
-            "/usr/local/bin/git",
-            "git",
-        ]
-    };
+    let candidates = [
+        "/usr/bin/git",
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "git",
+    ];
     for candidate in candidates {
         let path = Path::new(candidate);
         if path.is_absolute() && path.is_file() {
@@ -427,9 +423,8 @@ fn find_git() -> Result<PathBuf, String> {
         }
     }
     if let Some(path_env) = std::env::var_os("PATH") {
-        let exe = if cfg!(windows) { "git.exe" } else { "git" };
         for dir in std::env::split_paths(&path_env) {
-            let full = dir.join(exe);
+            let full = dir.join("git");
             if full.is_file() {
                 return Ok(full);
             }

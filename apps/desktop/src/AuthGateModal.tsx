@@ -47,9 +47,8 @@ export default function AuthGateModal() {
         </div>
 
         <p className="hint">
-          Run <code>pockets url</code> (or copy the{" "}
-          <strong>Open in any browser</strong> link printed when Pockets
-          started) and paste the link or token below:
+          Run <code>pockets url</code> in your terminal and paste the one-time
+          sign-in link (or session token) below:
         </p>
 
         <form className="folder-picker-pathbar" onSubmit={(e) => void submit(e)}>

@@ -567,49 +567,36 @@ fn stage_and_commit(
     })
 }
 
-/// An exclusive private directory, mode 0700 on Unix: revision history
-/// holds the project's private source and is never world- or
-/// group-readable.
+/// An exclusive private directory, mode 0700: revision history holds the
+/// project's private source and is never world- or group-readable.
 fn create_private_dir(dir: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    let created = {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new().mode(0o700).create(dir)
-    };
-    #[cfg(not(unix))]
-    let created = std::fs::DirBuilder::new().create(dir);
-    created.map_err(|err| {
-        format!(
-            "the private directory {} could not be created: {err}",
-            dir.display()
-        )
-    })
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(dir)
+        .map_err(|err| {
+            format!(
+                "the private directory {} could not be created: {err}",
+                dir.display()
+            )
+        })
 }
 
-/// Writes the revision metadata exclusively, mode 0600 on Unix.
+/// Writes the revision metadata exclusively, mode 0600.
 fn write_private_metadata(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    #[cfg(unix)]
-    let written = {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)
-            .and_then(|mut file| file.write_all(bytes))
-    };
-    #[cfg(not(unix))]
-    let written = std::fs::OpenOptions::new()
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o600)
         .open(path)
-        .and_then(|mut file| file.write_all(bytes));
-    written.map_err(|err| {
-        format!(
-            "the revision metadata at {} could not be written: {err}",
-            path.display()
-        )
-    })
+        .and_then(|mut file| file.write_all(bytes))
+        .map_err(|err| {
+            format!(
+                "the revision metadata at {} could not be written: {err}",
+                path.display()
+            )
+        })
 }
 
 /// The real wall-clock second used as a revision's creation stamp. A

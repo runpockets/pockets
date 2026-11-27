@@ -45,6 +45,17 @@ Installs Podman (via `apt`, `dnf`, or `pacman` if missing), installs the `pocket
 * **With Tailscale (recommended):** Pockets automatically publishes the dashboard privately on your tailnet (`https://<vm>.<tailnet>.ts.net:18786`), prints your one-time sign-in link in SSH, and opens installed Pockets and live previews directly over Tailscale HTTPS. (If you install Tailscale afterward, run `sudo tailscale set --operator=$USER` and `pockets tailscale on`.)
 * **Without Tailscale:** Pockets prints the exact `ssh -N -L 18786:127.0.0.1:18786 ...` tunnel command, or pass `--public-url https://pockets.example.com` (or `POCKETS_PUBLIC_URL`) if you put your own reverse proxy in front of `127.0.0.1:18786`.
 
+### Windows (WSL2)
+
+Native Windows is not supported yet. On Windows, run Pockets inside **WSL2** (with `systemd` enabled) using the Linux installer above:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/runpockets/pockets/main/packaging/install.sh | sh
+pockets
+```
+
+WSL2 automatically forwards `localhost` ports to Windows, so `http://pockets.localhost:18786/` and installed Pockets open in your regular Windows browser.
+
 ---
 
 ## How It Works

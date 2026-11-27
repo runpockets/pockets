@@ -20,25 +20,15 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 /// Maximum number of bytes of command output surfaced to users.
 const MAX_USER_MESSAGE_BYTES: usize = 2 * 1024;
 
-#[cfg(windows)]
-const PODMAN_EXE: &str = "podman.exe";
-#[cfg(not(windows))]
 const PODMAN_EXE: &str = "podman";
 
 /// Well-known install locations checked in addition to `PATH`.
-#[cfg(not(windows))]
 const KNOWN_LOCATIONS: [&str; 5] = [
     "/opt/homebrew/bin/podman",
     "/usr/local/bin/podman",
     "/opt/podman/bin/podman",
     "/usr/bin/podman",
     "/bin/podman",
-];
-
-#[cfg(windows)]
-const KNOWN_LOCATIONS: [&str; 2] = [
-    r"C:\Program Files\RedHat\Podman\podman.exe",
-    r"C:\Program Files (x86)\RedHat\Podman\podman.exe",
 ];
 
 /// Lifecycle state of the local Podman runtime.
@@ -123,13 +113,9 @@ pub fn missing_podman_message() -> String {
     {
         "Podman was not found on this computer. Install Pockets with Homebrew (`brew install runpockets/tap/pockets`) or run `brew install podman`, then retry.".to_owned()
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         "Podman was not found on this computer. Install it via your package manager (e.g. `sudo apt install podman` or `sudo dnf install podman`), then retry.".to_owned()
-    }
-    #[cfg(windows)]
-    {
-        "Podman was not found on this computer. Install it with `winget install RedHat.Podman` or from https://podman.io, then retry.".to_owned()
     }
 }
 
@@ -219,15 +205,15 @@ pub async fn detect_runtime() -> DetectionReport {
 }
 
 /// Ensures the local Podman engine is initialized and started when a Podman
-/// machine VM is required (macOS / Windows), then returns a fresh detection
-/// report. On Linux, Podman runs natively without a VM so this probes directly.
+/// machine VM is required (macOS), then returns a fresh detection report. On
+/// Linux, Podman runs natively without a VM so this probes directly.
 pub async fn bootstrap_runtime() -> DetectionReport {
     let initial = detect_runtime().await;
     if initial.state == RuntimeState::Ready || initial.state == RuntimeState::Missing {
         return initial;
     }
 
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(target_os = "macos")]
     {
         let binaries = find_all_podman();
         if binaries.is_empty() {
@@ -664,21 +650,11 @@ fn all_executables(candidates: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
 }
 
 /// Extract a version token ("5.2.0") from `podman --version` output.

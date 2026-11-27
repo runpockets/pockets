@@ -198,25 +198,13 @@ impl Credentials for FileVault {
         let temp = self.root.join(format!(".tmp-{}.json", uuid::Uuid::new_v4()));
         {
             use std::io::Write;
-            let mut file = {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::OpenOptionsExt;
-                    std::fs::OpenOptions::new()
-                        .create_new(true)
-                        .write(true)
-                        .mode(0o600)
-                        .open(&temp)
-                }
-                #[cfg(not(unix))]
-                {
-                    std::fs::OpenOptions::new()
-                        .create_new(true)
-                        .write(true)
-                        .open(&temp)
-                }
-            }
-            .map_err(|err| format!("Pockets could not save runtime settings: {err}"))?;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .mode(0o600)
+                .open(&temp)
+                .map_err(|err| format!("Pockets could not save runtime settings: {err}"))?;
             if let Err(err) = file.write_all(bytes).and_then(|()| file.sync_all()) {
                 let _ = std::fs::remove_file(&temp);
                 return Err(format!("Pockets could not write runtime settings: {err}"));

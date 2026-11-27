@@ -487,51 +487,28 @@ fn create_build_dir(store: &Store, id: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("the project directory for {id} could not be derived"))?
         .to_path_buf();
     let builds = project_dir.join("builds");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .recursive(true)
-            .create(&builds)
-            .map_err(|err| {
-                format!(
-                    "the builds directory {} could not be created: {err}",
-                    builds.display()
-                )
-            })?;
-        let dir = builds.join(uuid::Uuid::new_v4().simple().to_string());
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|err| {
-                format!(
-                    "the build directory {} could not be created: {err}",
-                    dir.display()
-                )
-            })?;
-        Ok(dir)
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .create(&builds)
-            .map_err(|err| {
-                format!(
-                    "the builds directory {} could not be created: {err}",
-                    builds.display()
-                )
-            })?;
-        let dir = builds.join(uuid::Uuid::new_v4().simple().to_string());
-        std::fs::DirBuilder::new().create(&dir).map_err(|err| {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .recursive(true)
+        .create(&builds)
+        .map_err(|err| {
+            format!(
+                "the builds directory {} could not be created: {err}",
+                builds.display()
+            )
+        })?;
+    let dir = builds.join(uuid::Uuid::new_v4().simple().to_string());
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|err| {
             format!(
                 "the build directory {} could not be created: {err}",
                 dir.display()
             )
         })?;
-        Ok(dir)
-    }
+    Ok(dir)
 }
 
 #[cfg(test)]

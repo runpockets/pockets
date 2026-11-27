@@ -399,25 +399,13 @@ fn write_session_token(ctx: &AppContext, token: &str) -> Result<(), String> {
         .join(format!(".session-{}.tmp", Uuid::new_v4().simple()));
     {
         use std::io::Write;
-        let mut file = {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .mode(0o600)
-                    .open(&temp)
-            }
-            #[cfg(not(unix))]
-            {
-                std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(&temp)
-            }
-        }
-        .map_err(|err| format!("Could not write Pockets session key: {err}"))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&temp)
+            .map_err(|err| format!("Could not write Pockets session key: {err}"))?;
         file.write_all(token.as_bytes())
             .and_then(|()| file.sync_all())
             .map_err(|err| {
@@ -500,25 +488,13 @@ pub fn write_daemon_record(ctx: &AppContext, record: &DaemonRecord) -> Result<()
         .map_err(|err| format!("Could not serialize daemon metadata: {err}"))?;
     {
         use std::io::Write;
-        let mut file = {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .mode(0o600)
-                    .open(&temp)
-            }
-            #[cfg(not(unix))]
-            {
-                std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(&temp)
-            }
-        }
-        .map_err(|err| format!("Could not write daemon metadata: {err}"))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&temp)
+            .map_err(|err| format!("Could not write daemon metadata: {err}"))?;
         file.write_all(&bytes)
             .and_then(|()| file.sync_all())
             .map_err(|err| {
@@ -870,37 +846,18 @@ fn build_reexec_args(
 /// `pockets` binary so `launchd`, `systemd`, and foreground terminals keep
 /// running the updated version under the same PID without dropping the site.
 fn reexec_updated_daemon(exe: &std::path::Path, args: &[std::ffi::OsString]) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let err = std::process::Command::new(exe).args(args).exec();
-        eprintln!(
-            "pockets self-update: could not exec {}: {err}",
-            exe.display()
-        );
-    }
-    #[cfg(not(unix))]
-    {
-        if let Err(err) = std::process::Command::new(exe)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            eprintln!(
-                "pockets self-update: could not respawn {}: {err}",
-                exe.display()
-            );
-        }
-    }
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(exe).args(args).exec();
+    eprintln!(
+        "pockets self-update: could not exec {}: {err}",
+        exe.display()
+    );
 }
 
 async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
-    #[cfg(unix)]
     let terminate = async {
         if let Ok(mut sig) =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -910,8 +867,6 @@ async fn shutdown_signal() {
             std::future::pending::<()>().await;
         }
     };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
 
     tokio::select! {
         _ = ctrl_c => {},
@@ -1427,11 +1382,7 @@ async fn create_owner_only_temp_file(
     path: &std::path::Path,
 ) -> Result<tokio::fs::File, std::io::Error> {
     let mut opts = tokio::fs::OpenOptions::new();
-    opts.create_new(true).write(true);
-    #[cfg(unix)]
-    {
-        opts.mode(0o600);
-    }
+    opts.create_new(true).write(true).mode(0o600);
     opts.open(path).await
 }
 

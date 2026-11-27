@@ -9,7 +9,7 @@ Pockets ships as a single cross-platform Rust binary (`pockets`, built from `cra
 - **Loopback-only control plane:** `pockets serve` binds exclusively to `127.0.0.1:18786` (serving `http://pockets.localhost:18786/`). On remote/headless hosts, the daemon still binds strictly to `127.0.0.1` and can optionally be reached privately via Tailscale Serve (`--tailscale`) or an explicit trusted reverse-proxy origin (`--public-url` / `POCKETS_PUBLIC_URL`).
 - **Authenticated local API:** Every request validates the `Host` header against loopback dashboard hosts (`pockets.localhost`, `localhost`, `127.0.0.1`) plus any explicitly configured Tailscale or `--public-url` origin, enforces strict `Origin` checks on state-changing `POST` requests, and protects `/api/*` with a per-machine 256-bit random session key (`session.key`, `0600` permissions) verified via an `HttpOnly; SameSite=Strict` cookie (`Secure` when served over HTTPS) or `Authorization: Bearer` header.
 - **No shell interpolation:** Rust owns runtime discovery, fixed argument arrays, container identity, port allocation, readiness probes, Tailscale Serve routing, and secret handling. Never accept arbitrary shell commands, image names, host mounts, or container flags from the frontend.
-- **Podman engine:** Pockets uses the installed Podman CLI via fixed argument arrays. On Linux, rootless Podman runs natively without a VM. On macOS and Windows, `pockets` can automatically initialize and start a Podman machine VM (`podman machine init` / `podman machine start`) when needed.
+- **Podman engine:** Pockets uses the installed Podman CLI via fixed argument arrays. On Linux, rootless Podman runs natively without a VM. On macOS, `pockets` can automatically initialize and start a Podman machine VM (`podman machine init` / `podman machine start`) when needed.
 
 ## Trust and Container Isolation
 
@@ -23,7 +23,7 @@ Pockets ships as a single cross-platform Rust binary (`pockets`, built from `cra
 ## Cross-Platform Runtime Secrets
 
 - Per-Pocket runtime variables and secrets are stored separately for **Preview** and **Installed** environments.
-- On macOS, Linux, and Windows, secrets are stored in an owner-only (`0700` dir / `0600` file, atomic write) local vault inside Pockets' data directory so secrets survive unsigned CLI/Homebrew upgrades and background service restarts cleanly (on macOS, readable legacy Keychain items are transparently migrated into the vault on first read).
+- On macOS and Linux, secrets are stored in an owner-only (`0700` dir / `0600` file, atomic write) local vault inside Pockets' data directory so secrets survive unsigned CLI/Homebrew upgrades and background service restarts cleanly (on macOS, readable legacy Keychain items are transparently migrated into the vault on first read).
 - Secrets are injected into Podman via stdin/scoped engine secrets, never written into snapshots, build contexts, manifests, or container CLI arguments.
 
 ## Private Tailnet Access via Tailscale Serve

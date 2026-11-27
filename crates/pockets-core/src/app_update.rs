@@ -73,14 +73,7 @@ impl InstallMethod {
                 ..
             } => "brew update && brew upgrade --ignore-dependencies pockets && brew services restart pockets".to_owned(),
             Self::Binary { .. } => {
-                #[cfg(windows)]
-                {
-                    "Download the latest zip from https://github.com/runpockets/pockets/releases/latest".to_owned()
-                }
-                #[cfg(not(windows))]
-                {
-                    "curl -fsSL https://raw.githubusercontent.com/runpockets/pockets/main/packaging/install.sh | sh".to_owned()
-                }
+                "curl -fsSL https://raw.githubusercontent.com/runpockets/pockets/main/packaging/install.sh | sh".to_owned()
             }
             Self::Development => {
                 "git pull && npm run build:web && cargo build -p pockets-cli".to_owned()

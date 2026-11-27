@@ -96,7 +96,7 @@ impl PodmanInstallKind {
     }
 }
 
-/// Summary of an existing Podman machine VM (macOS / Windows).
+/// Summary of an existing Podman machine VM (macOS).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PodmanMachineInfo {
     pub name: String,
@@ -161,7 +161,6 @@ pub enum PocketsUninstallOutcome {
     UninstalledHomebrew { prefix: PathBuf },
     RemovedBinary { exe_path: PathBuf },
     SkippedDevelopment,
-    ManualRemovalRequired { message: String },
 }
 
 /// Read-only inspection of the local Pockets and Podman installation.
@@ -239,7 +238,7 @@ async fn detect_podman_install(install_method: &InstallMethod) -> PodmanInstallK
         }
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         if let Some(manager) = detect_linux_podman_package_manager().await {
             return PodmanInstallKind::LinuxPackageManager {
@@ -250,14 +249,6 @@ async fn detect_podman_install(install_method: &InstallMethod) -> PodmanInstallK
         PodmanInstallKind::External {
             podman_bin,
             reason: "Podman does not appear to be managed by apt, dnf, or pacman.".to_owned(),
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        PodmanInstallKind::External {
-            podman_bin,
-            reason: "Uninstall Podman from Windows Settings or run `winget uninstall RedHat.Podman`.".to_owned(),
         }
     }
 }
@@ -358,8 +349,8 @@ async fn probe_stdout_equals(program: &str, args: &[&str], expected: &str) -> bo
 async fn inspect_podman_inventory(bin: &Path, engine_hint_ready: bool) -> PodmanInventory {
     let mut inventory = PodmanInventory::default();
 
-    // `podman machine list` works even when the VM is stopped on macOS/Windows.
-    #[cfg(any(target_os = "macos", windows))]
+    // `podman machine list` works even when the VM is stopped on macOS.
+    #[cfg(target_os = "macos")]
     {
         if let Ok(output) = runtime::run(bin, &["machine", "list", "--format", "json"]).await {
             if let Ok(machines) = parse_machines_json(&output.stdout) {
@@ -578,27 +569,15 @@ pub async fn uninstall_pockets_package(
             })
         }
         InstallMethod::Binary { exe_path } => {
-            #[cfg(windows)]
-            {
-                Ok(PocketsUninstallOutcome::ManualRemovalRequired {
-                    message: format!(
-                        "Windows cannot delete a running executable. Delete {} manually after this command exits.",
-                        exe_path.display()
-                    ),
-                })
-            }
-            #[cfg(not(windows))]
-            {
-                std::fs::remove_file(exe_path).map_err(|err| {
-                    format!(
-                        "Could not remove Pockets binary at {}: {err}",
-                        exe_path.display()
-                    )
-                })?;
-                Ok(PocketsUninstallOutcome::RemovedBinary {
-                    exe_path: exe_path.clone(),
-                })
-            }
+            std::fs::remove_file(exe_path).map_err(|err| {
+                format!(
+                    "Could not remove Pockets binary at {}: {err}",
+                    exe_path.display()
+                )
+            })?;
+            Ok(PocketsUninstallOutcome::RemovedBinary {
+                exe_path: exe_path.clone(),
+            })
         }
         InstallMethod::Development => Ok(PocketsUninstallOutcome::SkippedDevelopment),
     }
@@ -646,24 +625,17 @@ pub async fn uninstall_podman_package(kind: &PodmanInstallKind) -> Result<String
 }
 
 async fn is_running_as_root() -> bool {
-    #[cfg(unix)]
-    {
-        Command::new("id")
-            .arg("-u")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .await
-            .ok()
-            .filter(|out| out.status.success())
-            .and_then(|out| String::from_utf8(out.stdout).ok())
-            .is_some_and(|s| s.trim() == "0")
-    }
-    #[cfg(not(unix))]
-    {
-        false
-    }
+    Command::new("id")
+        .arg("-u")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .is_some_and(|s| s.trim() == "0")
 }
 
 async fn run_bounded(bin: &Path, args: &[&str], timeout: Duration) -> Result<String, String> {
@@ -927,7 +899,7 @@ fn parse_images_json(bytes: &[u8]) -> Result<Vec<String>, String> {
     Ok(pockets)
 }
 
-#[cfg(any(target_os = "macos", windows, test))]
+#[cfg(any(target_os = "macos", test))]
 #[derive(Deserialize)]
 struct MachineRow {
     #[serde(rename = "Name", alias = "name", default)]
@@ -938,7 +910,7 @@ struct MachineRow {
     is_default: bool,
 }
 
-#[cfg(any(target_os = "macos", windows, test))]
+#[cfg(any(target_os = "macos", test))]
 fn parse_machines_json(bytes: &[u8]) -> Result<Vec<PodmanMachineInfo>, String> {
     let trimmed = std::str::from_utf8(bytes)
         .map_err(|err| err.to_string())?

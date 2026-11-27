@@ -28,7 +28,7 @@ async fn copy_text(text: &str) -> Result<(), String> {
     {
         write_stdin_command("/usr/bin/pbcopy", &[], text).await
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         for (bin, args) in [
             ("wl-copy", &[][..]),
@@ -40,10 +40,6 @@ async fn copy_text(text: &str) -> Result<(), String> {
             }
         }
         Err("No Linux clipboard tool (wl-copy, xclip, or xsel) was available.".into())
-    }
-    #[cfg(windows)]
-    {
-        write_stdin_command("clip", &[], text).await
     }
 }
 

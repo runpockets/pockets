@@ -1,4 +1,9 @@
-//! Pockets CLI & cross-platform local web dashboard daemon.
+//! Pockets CLI & local web dashboard daemon (macOS and Linux).
+
+#[cfg(not(unix))]
+compile_error!(
+    "Pockets supports macOS and Linux. On Windows, run Pockets inside WSL2 using the Linux installer."
+);
 
 mod rpc;
 mod server;
@@ -120,7 +125,7 @@ Commands:
   status <ID>                             Show status for an installed Pocket
   service [install|uninstall|print] [--port PORT] [--tailscale] [--public-url URL]
                                           Install/uninstall/print background service (launchd/systemd)
-  url [--rotate] [--origin URL]           Print a one-time sign-in URL (use --rotate to revoke old sessions)
+  url [--rotate] [--origin URL]           Print a one-time sign-in link for another browser (--rotate revokes existing sessions)
   auth rotate                             Rotate the session key and revoke all existing browser sessions
   uninstall [--yes] [--remove-data|--keep-data] [--uninstall-podman|--keep-podman]
                                           Uninstall Pockets (and optionally its data & Podman)
@@ -579,11 +584,20 @@ async fn print_and_maybe_open_dashboard(
         if !headless {
             println!("Local URL:                 {local_dash}");
             if let Some(local_sign_in) = local_bootstrap {
-                println!("Local sign-in URL:         {local_sign_in}");
                 if open_browser {
-                    if let Err(err) = pockets_core::open_in_browser(local_sign_in).await {
-                        println!("Could not open default browser automatically ({err})");
+                    match pockets_core::open_in_browser(local_sign_in).await {
+                        Ok(()) => {
+                            println!(
+                                "Opening local dashboard in default browser… (run `pockets url` to sign in from another browser)"
+                            );
+                        }
+                        Err(err) => {
+                            println!("Could not open default browser automatically ({err})");
+                            println!("Local sign-in URL (open once): {local_sign_in}");
+                        }
                     }
+                } else {
+                    println!("Local sign-in URL (open once): {local_sign_in}");
                 }
             }
         }
@@ -610,11 +624,20 @@ async fn print_and_maybe_open_dashboard(
 
     println!("Pockets dashboard running at {local_dash}");
     if let Some(local_sign_in) = local_bootstrap {
-        println!("Open in any browser: {local_sign_in}");
         if open_browser {
-            if let Err(err) = pockets_core::open_in_browser(local_sign_in).await {
-                println!("Could not open default browser automatically ({err})");
+            match pockets_core::open_in_browser(local_sign_in).await {
+                Ok(()) => {
+                    println!(
+                        "Opening in your default browser… (run `pockets url` to sign in from another browser)"
+                    );
+                }
+                Err(err) => {
+                    println!("Could not open default browser automatically ({err})");
+                    println!("One-time sign-in URL: {local_sign_in}");
+                }
             }
+        } else {
+            println!("One-time sign-in URL: {local_sign_in}");
         }
     } else {
         println!("Run `pockets url` once the daemon is up for a one-time sign-in link.");
@@ -639,7 +662,17 @@ fn format_serve_startup_lines(
             server::dashboard_url_for(remote)
         ));
     }
-    lines.push("Run `pockets open` or `pockets url` to get a one-time sign-in link.".to_owned());
+    if let Some(dev) = dev_origin {
+        let origin = dev.trim_end_matches('/');
+        lines.push(format!(
+            "Run `pockets url --origin {origin}` for a one-time dev sign-in link (e.g. for another browser)."
+        ));
+    } else {
+        lines.push(
+            "Run `pockets` to open in your default browser, or `pockets url` for a one-time sign-in link for another browser."
+                .to_owned(),
+        );
+    }
     lines
 }
 
@@ -767,18 +800,14 @@ async fn try_open_existing_daemon(ctx: &AppContext, headless: bool) -> bool {
 
 fn background_service_tip(
     method: &pockets_core::app_update::InstallMethod,
-    is_windows: bool,
 ) -> Option<&'static str> {
     use pockets_core::app_update::InstallMethod;
     match method {
         InstallMethod::Homebrew { .. } => {
             Some("Tip: run 'brew services start pockets' to keep the dashboard running in the background.")
         }
-        InstallMethod::Binary { .. } if !is_windows => {
-            Some("Tip: run 'pockets service install' to keep the dashboard running in the background.")
-        }
         InstallMethod::Binary { .. } => {
-            Some("Tip: run 'pockets service print' for Task Scheduler setup to keep the dashboard running in the background.")
+            Some("Tip: run 'pockets service install' to keep the dashboard running in the background.")
         }
         InstallMethod::Development => None,
     }
@@ -823,7 +852,7 @@ async fn run_open(ctx: AppContext, flags: ServerFlags) -> Result<(), String> {
             .await;
             println!("Press Ctrl+C to stop the dashboard daemon (installed Pockets keep running).");
             let method = pockets_core::app_update::current_install_method();
-            if let Some(tip) = background_service_tip(&method, cfg!(windows)) {
+            if let Some(tip) = background_service_tip(&method) {
                 println!("{tip}");
             }
         }
@@ -1418,23 +1447,33 @@ mod tests {
 
     #[test]
     fn serve_startup_lines_never_include_credentials() {
-        let lines = format_serve_startup_lines(
+        let dev_lines = format_serve_startup_lines(
             18786,
             Some("http://localhost:1420"),
             Some("https://my-vm.tail1234.ts.net:18786"),
         );
-        let joined = lines.join("\n");
-        assert!(joined.contains("http://127.0.0.1:18786"));
-        assert!(joined.contains("Dev dashboard URL: http://localhost:1420/"));
-        assert!(joined.contains("Local dashboard URL: http://pockets.localhost:18786/"));
-        assert!(joined.contains("Remote dashboard URL: https://my-vm.tail1234.ts.net:18786/"));
-        assert!(!joined.contains("?token="));
-        assert!(!joined.contains("?code="));
-        assert!(!joined.contains("/auth/bootstrap"));
+        let dev_joined = dev_lines.join("\n");
+        assert!(dev_joined.contains("http://127.0.0.1:18786"));
+        assert!(dev_joined.contains("Dev dashboard URL: http://localhost:1420/"));
+        assert!(dev_joined.contains("Local dashboard URL: http://pockets.localhost:18786/"));
+        assert!(dev_joined.contains("Remote dashboard URL: https://my-vm.tail1234.ts.net:18786/"));
+        assert!(dev_joined.contains("pockets url --origin http://localhost:1420"));
+        assert!(!dev_joined.contains("pockets open"));
+        assert!(!dev_joined.contains("?token="));
+        assert!(!dev_joined.contains("?code="));
+        assert!(!dev_joined.contains("/auth/bootstrap"));
+
+        let prod_lines = format_serve_startup_lines(18786, None, None);
+        let prod_joined = prod_lines.join("\n");
+        assert!(prod_joined.contains("Run `pockets` to open in your default browser"));
+        assert!(prod_joined.contains("`pockets url` for a one-time sign-in link for another browser"));
+        assert!(!prod_joined.contains("?token="));
+        assert!(!prod_joined.contains("?code="));
+        assert!(!prod_joined.contains("/auth/bootstrap"));
     }
 
     #[test]
-    fn background_service_tip_matches_install_method_and_platform() {
+    fn background_service_tip_matches_install_method() {
         use pockets_core::app_update::InstallMethod;
         use std::path::PathBuf;
 
@@ -1443,7 +1482,7 @@ mod tests {
             has_brew_podman: true,
         };
         assert_eq!(
-            background_service_tip(&brew, false),
+            background_service_tip(&brew),
             Some("Tip: run 'brew services start pockets' to keep the dashboard running in the background.")
         );
 
@@ -1451,14 +1490,10 @@ mod tests {
             exe_path: PathBuf::from("/usr/local/bin/pockets"),
         };
         assert_eq!(
-            background_service_tip(&binary, false),
+            background_service_tip(&binary),
             Some("Tip: run 'pockets service install' to keep the dashboard running in the background.")
         );
-        assert_eq!(
-            background_service_tip(&binary, true),
-            Some("Tip: run 'pockets service print' for Task Scheduler setup to keep the dashboard running in the background.")
-        );
 
-        assert_eq!(background_service_tip(&InstallMethod::Development, false), None);
+        assert_eq!(background_service_tip(&InstallMethod::Development), None);
     }
 }

@@ -31,7 +31,7 @@ case "$OS" in
     esac
     ;;
   *)
-    echo "Unsupported OS: $OS (use Windows installer or cargo install)" >&2
+    echo "Unsupported OS: $OS (Pockets supports macOS and Linux; on Windows, run this installer inside WSL2)" >&2
     exit 1
     ;;
 esac

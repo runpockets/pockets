@@ -80,7 +80,7 @@ pub fn render_template_for(exe: &str, config: &ServiceConfig) -> String {
         )
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         let suffix = if extra_args.is_empty() {
             String::new()
@@ -103,16 +103,6 @@ WantedBy=default.target
 "#
         )
     }
-
-    #[cfg(windows)]
-    {
-        let suffix = if extra_args.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", extra_args.join(" "))
-        };
-        format!("# Run at login via Task Scheduler:\n{exe} serve --port {port}{suffix}\n")
-    }
 }
 
 pub fn service_file_path() -> Result<PathBuf, String> {
@@ -127,18 +117,13 @@ pub fn service_file_path() -> Result<PathBuf, String> {
             .join(format!("{MACOS_LABEL}.plist")))
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         Ok(home
             .join(".config")
             .join("systemd")
             .join("user")
             .join("pockets.service"))
-    }
-
-    #[cfg(windows)]
-    {
-        Err("Automatic background service installation is not yet supported on Windows. Run `pockets service print` for Task Scheduler instructions.".to_owned())
     }
 }
 
@@ -205,7 +190,7 @@ pub async fn install(config: &ServiceConfig) -> Result<InstallOutcome, String> {
         })
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         run_cmd("systemctl", &["--user", "daemon-reload"]).await?;
         run_cmd("systemctl", &["--user", "enable", "pockets.service"]).await?;
@@ -214,14 +199,6 @@ pub async fn install(config: &ServiceConfig) -> Result<InstallOutcome, String> {
         Ok(InstallOutcome {
             path,
             linger_enabled,
-        })
-    }
-
-    #[cfg(windows)]
-    {
-        Ok(InstallOutcome {
-            path,
-            linger_enabled: None,
         })
     }
 }

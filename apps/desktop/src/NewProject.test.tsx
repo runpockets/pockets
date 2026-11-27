@@ -301,6 +301,9 @@ describe("New project", () => {
     expect(screen.getByText("~/Code/personal/dabn")).toBeTruthy();
     expect(screen.getByText("Rust")).toBeTruthy();
     expect(within(card).getByText("~/Code/personal/dabn/pocket")).toBeTruthy();
+    expect(
+      within(card).getByText(/Does not auto-convert or run existing code/),
+    ).toBeTruthy();
 
     fireEvent.change(within(card).getByLabelText("Project name"), {
       target: { value: "Dabn App" },

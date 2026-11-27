@@ -33,9 +33,6 @@ use crate::tailscale_portal::{PortalEntry, PortalSnapshot, TailscalePortal, PORT
 /// Tailscale HTTPS port used for the launcher & named `/<slug>` shortcuts.
 const PORTAL_HTTPS_PORT: u16 = 443;
 
-#[cfg(windows)]
-const TAILSCALE_EXE: &str = "tailscale.exe";
-#[cfg(not(windows))]
 const TAILSCALE_EXE: &str = "tailscale";
 
 /// Well-known Tailscale CLI locations checked in addition to `PATH`.
@@ -1293,21 +1290,11 @@ fn first_executable(candidates: &[PathBuf]) -> Option<PathBuf> {
 }
 
 fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
 }
 
 #[cfg(test)]

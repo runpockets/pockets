@@ -30,18 +30,9 @@ pub struct DirectoryListing {
 
 /// Resolves the user's home directory without external crates.
 pub fn user_home_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        std::env::var_os("USERPROFILE")
-            .map(PathBuf::from)
-            .filter(|p| !p.as_os_str().is_empty())
-    }
-    #[cfg(not(windows))]
-    {
-        std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .filter(|p| !p.as_os_str().is_empty())
-    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
 }
 
 /// Resolves the default Pockets application data directory for the host OS.
@@ -50,7 +41,6 @@ pub fn user_home_dir() -> Option<PathBuf> {
 /// - macOS: `~/Library/Application Support/dev.pockets.desktop` (preserves
 ///   existing installations seamlessly)
 /// - Linux / Unix: `$XDG_DATA_HOME/pockets` or `~/.local/share/pockets`
-/// - Windows: `%LOCALAPPDATA%\pockets`
 pub fn default_data_dir() -> Result<PathBuf, String> {
     if let Some(override_dir) = std::env::var_os("POCKETS_DATA_DIR") {
         let path = PathBuf::from(override_dir);
@@ -69,7 +59,7 @@ pub fn default_data_dir() -> Result<PathBuf, String> {
             .join("dev.pockets.desktop"))
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
             let path = PathBuf::from(xdg);
@@ -80,20 +70,6 @@ pub fn default_data_dir() -> Result<PathBuf, String> {
         let home = user_home_dir()
             .ok_or_else(|| "Could not determine HOME directory for Pockets data.".to_owned())?;
         Ok(home.join(".local").join("share").join("pockets"))
-    }
-
-    #[cfg(windows)]
-    {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let path = PathBuf::from(local);
-            if !path.as_os_str().is_empty() {
-                return Ok(path.join("pockets"));
-            }
-        }
-        let home = user_home_dir().ok_or_else(|| {
-            "Could not determine USERPROFILE directory for Pockets data.".to_owned()
-        })?;
-        Ok(home.join("AppData").join("Local").join("pockets"))
     }
 }
 

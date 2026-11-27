@@ -158,9 +158,6 @@ pub async fn run_uninstall(ctx: AppContext, flags: UninstallFlags) -> Result<(),
         PocketsUninstallOutcome::SkippedDevelopment => {
             println!("• Development build detected — skipped deleting Cargo target binary");
         }
-        PocketsUninstallOutcome::ManualRemovalRequired { message } => {
-            println!("• {message}");
-        }
     }
 
     // 6. Uninstall Podman if requested.
@@ -294,7 +291,7 @@ pub fn resolve_plan(
         }
     };
 
-    // Question 2: Podman (and Podman machine VMs on macOS/Windows).
+    // Question 2: Podman (and Podman machine VMs on macOS).
     let (uninstall_podman, remove_podman_machines) = match &inspection.podman_install {
         PodmanInstallKind::NotInstalled => {
             if flags.uninstall_podman == Some(true) {
@@ -512,18 +509,11 @@ fn print_data_cleanup_report(report: &PocketsDataCleanupReport) {
 }
 
 async fn stop_running_daemon(pid: u32) {
-    #[cfg(unix)]
-    {
-        let _ = tokio::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status()
-            .await;
-        tokio::time::sleep(Duration::from_millis(300)).await;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-    }
+    let _ = tokio::process::Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
 }
 
 fn plural<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {

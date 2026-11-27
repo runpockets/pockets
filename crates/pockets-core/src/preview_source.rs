@@ -112,16 +112,11 @@ impl MirroredSource {
         match std::fs::symlink_metadata(root) {
             Ok(_) => real_directory(root)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::DirBuilderExt;
-                    std::fs::DirBuilder::new()
-                        .mode(0o700)
-                        .create(root)
-                        .map_err(|e| e.to_string())?;
-                }
-                #[cfg(not(unix))]
-                std::fs::create_dir(root).map_err(|e| e.to_string())?;
+                use std::os::unix::fs::DirBuilderExt;
+                std::fs::DirBuilder::new()
+                    .mode(0o700)
+                    .create(root)
+                    .map_err(|e| e.to_string())?;
             }
             Err(e) => return Err(e.to_string()),
         }

@@ -401,13 +401,10 @@ fn stage_swap_and_save(
     // like the build staging does, before anything existing is moved.
     let tag = Uuid::new_v4().simple().to_string();
     let staging = project_dir.join(format!("source.refresh-{tag}"));
-    #[cfg(unix)]
     let created = {
         use std::os::unix::fs::DirBuilderExt;
         std::fs::DirBuilder::new().mode(0o700).create(&staging)
     };
-    #[cfg(not(unix))]
-    let created = std::fs::DirBuilder::new().create(&staging);
     created.map_err(|err| {
         format!(
             "the staging directory {} could not be created: {err}",
@@ -947,10 +944,8 @@ fn validate_relative(field: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Included files must be unique inode references: on Unix a link
-/// count above 1 means another path shares the bytes, so the import
-/// refuses the folder.
-#[cfg(unix)]
+/// Included files must be unique inode references: a link count above 1 means
+/// another path shares the bytes, so the import refuses the folder.
 fn reject_hardlink(meta: &std::fs::Metadata, rel: &str) -> Result<(), String> {
     use std::os::unix::fs::MetadataExt;
     if meta.nlink() > 1 {
@@ -958,12 +953,6 @@ fn reject_hardlink(meta: &std::fs::Metadata, rel: &str) -> Result<(), String> {
             "{rel} is a hard link to another file; break the link and retry"
         ));
     }
-    Ok(())
-}
-
-/// Hard links are not a meaningful concept on non-Unix platforms.
-#[cfg(not(unix))]
-fn reject_hardlink(_meta: &std::fs::Metadata, _rel: &str) -> Result<(), String> {
     Ok(())
 }
 

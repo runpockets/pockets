@@ -39,7 +39,6 @@ if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
   process.exit(2);
 }
 
-const isWin = process.platform === "win32";
 const useColor = Boolean(process.stdout.isTTY);
 const ansiPattern = /\x1b\[[0-9;]*m/g;
 
@@ -69,11 +68,7 @@ function pipePrefixed(stream, prefix, target, onLine) {
 
 function openBrowser(url) {
   const [cmd, cmdArgs] =
-    process.platform === "darwin"
-      ? ["open", [url]]
-      : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
-        : ["xdg-open", [url]];
+    process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
   const opener = spawn(cmd, cmdArgs, { stdio: "ignore", detached: true });
   opener.on("error", () => {});
   opener.unref();
@@ -93,13 +88,12 @@ daemonArgs.push(
 
 const daemon = spawn("cargo", daemonArgs, {
   stdio: ["ignore", "pipe", "pipe"],
-  detached: !isWin,
+  detached: true,
 });
 
-const npmBin = isWin ? "npm.cmd" : "npm";
-const web = spawn(npmBin, ["run", "dev:web"], {
+const web = spawn("npm", ["run", "dev:web"], {
   stdio: ["ignore", "pipe", "pipe"],
-  detached: !isWin,
+  detached: true,
   env: {
     ...process.env,
     POCKETS_DAEMON_URL: `http://127.0.0.1:${port}`,
@@ -157,7 +151,7 @@ function maybeOpen() {
 function terminate(child, signal) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   try {
-    if (!isWin && child.pid) {
+    if (child.pid) {
       process.kill(-child.pid, signal);
     } else {
       child.kill(signal);

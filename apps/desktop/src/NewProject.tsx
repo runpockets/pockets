@@ -960,15 +960,24 @@ export default function NewProject({
                   </p>
                 )}
                 {pocketizePlan === null ? (
-                  <div className="new-project-folder-actions">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void chooseLocalFolder()}
-                    >
-                      {busy ? "Checking folder…" : "Choose local folder…"}
-                    </button>
-                  </div>
+                  <>
+                    <p className="hint">
+                      Link an existing Pocket folder, or choose any non-Pocket
+                      project to <strong>pocketize</strong> (convert) it. When
+                      pocketizing, Pockets creates a separate{" "}
+                      <code>pocket/</code> folder and never changes your
+                      existing files.
+                    </p>
+                    <div className="new-project-folder-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void chooseLocalFolder()}
+                      >
+                        {busy ? "Checking folder…" : "Choose local folder…"}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <div className="new-project-local-flow">
                     <div className="new-project-folder-picked">
@@ -1132,51 +1141,90 @@ export default function NewProject({
                           </div>
                         </div>
 
-                        <div className="new-project-pocketize-destination">
-                          <span className="new-project-folder-prefix">
-                            Creates
-                          </span>
-                          <code className="new-project-folder-value">
-                            {joinPathForDisplay(
-                              pocketizeCustomParent ?? pocketizePlan.folderPath,
-                              pocketizeCustomParent === null
-                                ? pocketizePlan.suggestedSubfolder || "pocket"
-                                : pocketizeId || pocketizePlan.suggestedId,
-                            )}
-                          </code>
-                          <span
-                            className="new-project-folder-sep"
-                            aria-hidden="true"
-                          >
-                            ·
-                          </span>
-                          <button
-                            type="button"
-                            className="new-project-link-button"
-                            disabled={busy}
-                            onClick={() => void choosePocketizeLocation()}
-                          >
-                            Change location
-                          </button>
-                          {pocketizeCustomParent !== null && (
-                            <>
-                              <span
-                                className="new-project-folder-sep"
-                                aria-hidden="true"
-                              >
-                                ·
-                              </span>
-                              <button
-                                type="button"
-                                className="new-project-link-button"
-                                disabled={busy}
-                                onClick={() => setPocketizeCustomParent(null)}
-                              >
-                                Inside {pocketizePlan.folderName}
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        {(() => {
+                          const insideSource = pocketizeCustomParent === null;
+                          const targetSubfolder =
+                            pocketizePlan.suggestedSubfolder || "pocket";
+                          const targetPath = joinPathForDisplay(
+                            pocketizeCustomParent ?? pocketizePlan.folderPath,
+                            insideSource
+                              ? targetSubfolder
+                              : pocketizeId || pocketizePlan.suggestedId,
+                          );
+                          return (
+                            <div className="new-project-pocketize-destination">
+                              <div className="new-project-pocketize-destination-row">
+                                <span className="new-project-folder-prefix">
+                                  Creates
+                                </span>
+                                <code className="new-project-folder-value">
+                                  {targetPath}
+                                </code>
+                                <span
+                                  className="new-project-folder-sep"
+                                  aria-hidden="true"
+                                >
+                                  ·
+                                </span>
+                                <button
+                                  type="button"
+                                  className="new-project-link-button"
+                                  disabled={busy}
+                                  onClick={() => void choosePocketizeLocation()}
+                                >
+                                  Change location
+                                </button>
+                                {!insideSource && (
+                                  <>
+                                    <span
+                                      className="new-project-folder-sep"
+                                      aria-hidden="true"
+                                    >
+                                      ·
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="new-project-link-button"
+                                      disabled={busy}
+                                      onClick={() =>
+                                        setPocketizeCustomParent(null)
+                                      }
+                                    >
+                                      Inside {pocketizePlan.folderName}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <ul className="new-project-pocketize-steps">
+                                <li>
+                                  {insideSource ? (
+                                    <>
+                                      Creates a fresh starter Pocket in{" "}
+                                      <code>{targetSubfolder}/</code> without
+                                      modifying your existing{" "}
+                                      <code>{pocketizePlan.folderName}</code>{" "}
+                                      files.
+                                    </>
+                                  ) : (
+                                    <>
+                                      Creates a fresh starter Pocket at{" "}
+                                      <code>{targetPath}</code> without
+                                      modifying your original{" "}
+                                      <code>{pocketizePlan.folderName}</code>{" "}
+                                      folder.
+                                    </>
+                                  )}
+                                </li>
+                                <li>
+                                  Does not auto-convert or run existing code.
+                                  Next, you’ll get a tailored prompt for your
+                                  coding tool to recreate the app here with Live
+                                  Preview.
+                                </li>
+                              </ul>
+                            </div>
+                          );
+                        })()}
 
                         {pocketizePlan.blockers.map((blocker) => (
                           <p key={blocker} role="alert" className="error">
